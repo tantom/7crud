@@ -1,0 +1,51 @@
+{
+  "name": "7crud",
+  "version": "0.2",
+  "description": "simple web interface CRUD for mysql database",
+  "homepage": "http://github.com/tantom/7crud",
+  "author": {
+    "name": "TANTOM",
+    "email": "tantom2000@gmail.com",
+    "url": "http://github.com/tantom"
+  },
+  "contributors": [
+    {
+      "name": "TANTOM",
+      "url": "http://github.com/tantom"
+    }
+  ],
+  "keywords": [
+    "CRUD",
+    "mysql",
+    "database",
+    "management"
+  ],
+  "main": "./7crud.js",
+  "engines": {
+    "node": "*"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tantom/7crud.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tantom/7crud/issues"
+  },
+  "licenses": [
+    {
+      "type": "MIT"
+    }
+  ],
+  "devDependencies": {
+    "express": "latest",
+    "moment": "latest",
+	"sequelize": "latest"
+  },
+  "scripts": {
+    "test": "make test"
+  },
+  "ender": "",
+  "readme": "simple manage mysql table crud in a web page with nodejs. \n if you need a app that just need to manage some table datas with simple .just try it. it's simple",
+  "_id": "7crud@0.2",
+  "_from": "7crud"
+}
