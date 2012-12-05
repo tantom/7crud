@@ -38,4 +38,5 @@ var crud = require("7crud");
 crud.conf("db", "root", "pass");
 crud.init(app, tables);
 ````
+nav http://localhost:3000/crud/list for start crud
 
