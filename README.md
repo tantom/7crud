@@ -15,17 +15,27 @@ install-npm
 
 use 
 -------------
-add below code the your app.js
+create table for test, struct like 
+````
+name:varchar
+code:text
+hash:varchar
+updateTime:datetime
+downCount:integer
+desc:varchar
+````
+
+add below code in you app.js
 ````
 var tables = {
-	ETScripts:{
+	tbName:{
 			columns:"name/s code/t hash/s updateTime/d downCount/i desc/s",
 			list:"id name desc"
 		}
 }
 
 var crud = require("7crud");
-crud.conf("duolatu", "root", "db.exi");
+crud.conf("db", "root", "pass");
 crud.init(app, tables);
 ````
 
