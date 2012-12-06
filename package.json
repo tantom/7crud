@@ -1,6 +1,6 @@
 {
   "name": "7crud",
-  "version": "0.2",
+  "version": "0.2.0",
   "description": "simple web interface CRUD for mysql database",
   "homepage": "http://github.com/tantom/7crud",
   "author": {
@@ -37,9 +37,15 @@
     }
   ],
   "devDependencies": {
-    "express": "latest",
-    "moment": "latest",
-	"sequelize": "latest"
+    "moment": "~1.7.0",
+	"sequelize": "~1.6.0",
+	"mysql": "~2.0.0"
+  },
+  "dependencies":{
+	"moment":"~1.7.0",
+	"sequelize":"~1.6.0",
+	"mysql":"~2.0.0",
+	"async":"latest"
   },
   "scripts": {
     "test": "make test"

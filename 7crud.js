@@ -5,6 +5,8 @@ var sequelize;
 var moment = require("moment");
 var fs = require("fs");
 var ejs = require("ejs");
+var async = require("async");
+var sys = require("sys");
 var viewHtml = fs.readFileSync(__dirname + '/pub/main.ejs', 'utf8');
 
 //将简化定义的字段换成sequelize的字段类型
@@ -198,7 +200,7 @@ function listJson(req, res) {
 		if (condi.attributes.indexOf("id")==-1) {
 			condi.attributes.push("id");
 		}
-		condi.order = "createdAt desc";
+		condi.order = "";
 		et.seqObj.findAll(condi).success(function(mds) { 
 			data.rows = mds;
 			// console.log("get datas:\n" + JSON.stringify(data));
@@ -250,59 +252,140 @@ crud.conf = function(db, user, pass) {
 }
 
 crud.init = function(app, tables) {
-	//@todo 查找所有的表自动转成模型,如果有与自定义冲突的,以自定义的为准
-	//将模型转换为sequelize的数据模型
-	for (var i in tables) {
-		var et = tables[i];
-		et.table = i;
-		et.cols = [];
-		et.listCols = [];
-		//根据字段的定义生成sequelize的数据模型
-		var seq = {}, cl, df;
-		var cls = et.columns.split(" ");
-		var insM = {};
-		insM.instanceMethods = {};
-		for (var j=0; j<cls.length; j++) {
-			cl = cls[j];
-			df = cl.split("/");
-			var column = {
-				name:df[0],
-				type:df[1]
-			}
-			et.cols.push(column);
-			et.listCols.push(column.name);
-			seq[column.name] = getSeqColumnType(column.type);
+	var tbs = {};
+	async.series([scanTables, buildTables, initServlets], function(err){
+		if (err) {
+			throw "can't not init with error:" + err;	
+		}
+	});
 
-			if (column.type=="d") {
-				var methodName = "get" + column.name;
-				var dateCol = column.name;
-				insM.instanceMethods[methodName] = function() {
-					var d = this[dateCol];
-					if (d==null)
-						return "";
-					return moment(d).format("YYYY/MM/DD");
+	function scanTables(callback) {
+		var mysql      = require('mysql');
+		var conn = mysql.createConnection({
+			database : crud.config.db,
+			user     : crud.config.user,
+			password : crud.config.pass
+		});
+
+		conn.connect(function(err) {
+			conn.query('show tables', function(err, rows, fields) {
+				var colName = fields[0].name;
+				//get all tables
+				for (var i=0; i < rows.length; i++) {
+					var row = rows[i];
+					tbs[row[colName]] = {};
 				}
-			}
-		}
-		if (et.list!=null) {
-			var listCs = et.list.split(" ");
-			et.listCols = listCs;
-		}
 
-		et.seqObj = sequelize.define(et.table, seq, insM);
-		_tables[i] = et;
+				var q = async.queue(function(tableName, callback) {
+					conn.query('show columns from ' + tableName, function(err, rows, fields) {
+						// console.log(sys.inspect(rows));
+						var sb = [];
+						for (var i=0; i < rows.length; i++) {
+							var row = rows[i];
+							var s = row.Field + "/";
+							if (row.Type.indexOf('int')==0 || 
+								row.Type.indexOf('tinyint')==0) {
+								s += "i";
+							}else if (row.Type.indexOf('varchar')==0) {
+								s += "s";
+							}else if (row.Type.indexOf('text')==0) {
+								s += "t";
+							}else if (row.Type.indexOf('date')==0) {
+								s += "d";
+							}else { //otherwise use as string 
+								s += "s";
+							}
+							sb.push(s);
+						}
+						tbs[tableName].columns = sb.join(" ");
+						console.log('tb columns:' + tbs[tableName].columns);
+						callback();
+					});
+				}, 3);
+			
+				//get all table columns
+				for (var i in tbs) {
+					q.push(i);
+				}
+
+				q.drain = function() {
+					console.log('ok, call next ');
+					//remap tables, if user has define the same table use user define
+					for (var i in tables) {
+						tbs[i] = tables[i];
+					}
+					tables = tbs;
+
+					conn.end();
+					callback();
+				}
+
+			});	
+		});
 	}
 
+	function buildTables(callback) {
+		//将模型转换为sequelize的数据模型
+		for (var i in tables) {
+			var et = tables[i];
+			et.table = i;
+			et.cols = [];
+			et.listCols = [];
+			//根据字段的定义生成sequelize的数据模型
+			var seq = {}, cl, df;
+			var cls = et.columns.split(" ");
+			var insM = {};
+			insM.instanceMethods = {};
+			for (var j=0; j<cls.length; j++) {
+				cl = cls[j];
+				df = cl.split("/");
+				var column = {
+					name:df[0],
+					type:df[1]
+				}
+				et.cols.push(column);
+				et.listCols.push(column.name);
+				seq[column.name] = getSeqColumnType(column.type);
 
-	app.post('/crud/:name/save', save);
-	app.get('/crud/list', listAll);
-	app.get('/crud/:name/add', add);
-	app.get('/crud/:name/list/json/:page', listJson);
-	app.get('/crud/:name/list', list);
-	app.get('/crud/:name/edit/:id', edit);
-	app.get('/crud/login', login);
-	app.post('/crud/login', doLogin);
-	app.get('/crud-pub/:file', pubFile);
+				if (column.type=="d") {
+					var methodName = "get" + column.name;
+					var dateCol = column.name;
+					insM.instanceMethods[methodName] = function() {
+						var d = this[dateCol];
+						if (d==null)
+							return "";
+						return moment(d).format("YYYY/MM/DD");
+					}
+				}
+			}
+			if (et.list!=null) {
+				var listCs = et.list.split(" ");
+				et.listCols = listCs;
+			}
+			//not insert time 
+			insM.timestamps = false;
+			insM.freezeTableName = true;
+            console.log('tb:' + et.table);
+			et.seqObj = sequelize.define(et.table, seq, insM);
+			_tables[i] = et;
+		}
+		console.log('buildTables complete');
+		callback();
+	}
+
+	function initServlets(callback) {
+		app.post('/crud/:name/save', save);
+		app.get('/crud/list', listAll);
+		app.get('/crud/:name/add', add);
+		app.get('/crud/:name/list/json/:page', listJson);
+		app.get('/crud/:name/list', list);
+		app.get('/crud/:name/edit/:id', edit);
+		app.get('/crud/login', login);
+		app.post('/crud/login', doLogin);
+		app.get('/crud-pub/:file', pubFile);
+		console.log('init servlets complete');
+		callback();
+	}
 }
 
 function pubFile(req, res) {
