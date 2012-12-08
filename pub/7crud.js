@@ -33,7 +33,7 @@ function crudDel(e) {
 	var f = $(e.target).closest('form');
 	if (!f)
 		return;
-	var dId = f.find('[name="id"]');
+	var dId = f.find('[name="_id"]');
 	dId.attr("value", "@" + dId.attr("value"));
 	$.post(f.attr('action'), f.toJSON(), function(res) {
 		document.location = f.attr('redirect');	

@@ -7,20 +7,30 @@ var fs = require("fs");
 var ejs = require("ejs");
 var async = require("async");
 var sys = require("sys");
+var _ = require("underscore");
 var viewHtml = fs.readFileSync(__dirname + '/pub/main.ejs', 'utf8');
 
 //将简化定义的字段换成sequelize的字段类型
 function getSeqColumnType(c) {
-	if (c=="s") {
-		return Sequelize.STRING;
-	}else if (c=="d") {
-		return Sequelize.DATE;
-	}else if (c=="t") {
-		return Sequelize.TEXT;
-	}else if (c=="i") {
-		return Sequelize.INTEGER;
+    var t = {};
+
+	if (c.type=="s") {
+		t.type = Sequelize.STRING;
+	}else if (c.type=="d") {
+		t.type = Sequelize.DATE;
+	}else if (c.type=="t") {
+	    t.type = Sequelize.TEXT;
+	}else if (c.type=="i") {
+		t.type = Sequelize.INTEGER;
+	}else {
+		t.type = Sequelize.STRING;
 	}
-	return Sequelize.STRING;
+
+	if (c.extra.indexOf("p")!=-1) {
+		t.primaryKey = true;
+	}
+
+	return t;
 }
 
 function save(req, res) {		
@@ -33,10 +43,10 @@ function save(req, res) {
 	
 	console.log('bodys:' + JSON.stringify(req.body));
 	//带有id属性以更新的方式进行
-	if (req.body.id) {
+	if (req.body._id) {
 		//id 以@开头的话,表示进行删除操作
-		if (req.body.id.indexOf("@")==0) {
-			var etId = req.body.id.substring(1);
+		if (req.body._id.indexOf("@")==0) {
+			var etId = req.body._id.substring(1);
 			console.log('etId:' + etId);
 			et.seqObj.find(etId).success(function(data) {
 				data.destroy().success(function() {
@@ -44,7 +54,7 @@ function save(req, res) {
 				});
 			});
 		}else {
-			et.seqObj.find(req.body.id).success(function(data) {
+			et.seqObj.find(req.body._id).success(function(data) {
 				data.updateAttributes(req.body).success(function() {
 					res.end('{}');
 				});
@@ -72,7 +82,8 @@ function add(req, res) {
 		sb.push('</td><td>');
 		var val = "";
 		if (col.type=="s" || col.type=="i") {
-			sb.push("<input type=text name=" + col.name + " value=\"" + val  + "\" >");
+		    var disableStr = col.extra.indexOf("a")!=-1?"disabled":"";
+			sb.push("<input type=text name=" + col.name + " value=\"" + val  + "\" " + disableStr  + " >");
 		}else if (col.type=="t") {
 			sb.push("<textarea style='width:100%;height:100px' name=" + col.name + ">" + val  + "</textarea>")
 		}else if (col.type=="d") {
@@ -104,7 +115,7 @@ function edit(req, res) {
 		sb.push('<form  action="/crud/' + etName + '/save" redirect="/crud/' + etName + '/list">');
 		sb.push('<table width=100%>');
 		
-		sb.push('<input type=hidden name=id value=' + req.params.id + '>');
+		sb.push('<input type=hidden name=_id value=' + req.params.id + '>');
 		for (var i=0; i<et.cols.length; i++) {
 			var col = et.cols[i];
 			sb.push('<tr><td>');
@@ -113,7 +124,8 @@ function edit(req, res) {
 			var val = data[col.name];
 			val = val==null?"":val;
 			if (col.type=="s" || col.type=="i") {
-				sb.push("<input type=text name=" + col.name + " value=\"" + val  + "\" >");
+				var disableStr = col.extra.indexOf("a")!=-1?"readonly":"";
+				sb.push("<input type=text name=" + col.name + " value=\"" + val  + "\" " + disableStr + ">");
 			}else if (col.type=="t") {
 				sb.push("<textarea style='width:100%;height:100px' name=" + col.name + ">" + val  + "</textarea>")
 			}else if (col.type=="d") {
@@ -141,7 +153,7 @@ function listAll(req, res) {
 	sb.push("<ul>");
 	for (var i in _tables) {
 		var et = _tables[i];
-		sb.push('<li><a href=/crud/' + i + '/list >' + i + '</a></li>');
+		sb.push('<li><a href=/crud/' + i + '/list >' + i + '</a> <span class=columnDef>' + et.columns  + '</span></li>');
 	}
 	sb.push("</ul>");
 	res.send(renderViewHtml(sb.join(""), ""));
@@ -163,7 +175,7 @@ function list(req, res) {
 	sb.push('<tbody><tr>');
 	et.listCols.forEach(function(col, idx) {
 		if (idx==0) {
-			sb.push('<td><a href="/crud/' + en + '/edit/${id}">${' + col + '}</a></td>'); 
+			sb.push('<td><a href="/crud/' + en + '/edit/${' + et.pk + '}">${' + col + '}</a></td>'); 
 		}else {
 			sb.push('<td>${' + col + '}</td>');
 		}
@@ -197,9 +209,13 @@ function listJson(req, res) {
 		condi.offset = reqPage*perPage;
 		//only list the need columns to the view
 		condi.attributes = et.listCols.slice();
-		if (condi.attributes.indexOf("id")==-1) {
-			condi.attributes.push("id");
+		//if not include the pk in the list then auto add it
+		//cause lister need id to render the edit link
+		if (!_.contains(condi.attributes, et.pk)) {
+			condi.attributes.push(et.pk);
 		}
+		console.log(sys.inspect(et.pkColumn));
+		console.log(sys.inspect(condi.attributes));
 		condi.order = "";
 		et.seqObj.findAll(condi).success(function(mds) { 
 			data.rows = mds;
@@ -282,6 +298,7 @@ crud.init = function(app, tables) {
 						var sb = [];
 						for (var i=0; i < rows.length; i++) {
 							var row = rows[i];
+							console.log(sys.inspect(row));
 							var s = row.Field + "/";
 							if (row.Type.indexOf('int')==0 || 
 								row.Type.indexOf('tinyint')==0) {
@@ -295,10 +312,19 @@ crud.init = function(app, tables) {
 							}else { //otherwise use as string 
 								s += "s";
 							}
+
+							//if has extra like auto_increment that it can't edit
+							if (row.Extra.indexOf('auto_increment')==0) {
+								s += "/a";
+							}
+							if (row.Key.indexOf('PRI')==0) {
+								s += "/p";
+							}
+
 							sb.push(s);
 						}
 						tbs[tableName].columns = sb.join(" ");
-						console.log('tb columns:' + tbs[tableName].columns);
+						console.log(tableName + ' columns:' + tbs[tableName].columns);
 						callback();
 					});
 				}, 3);
@@ -312,7 +338,9 @@ crud.init = function(app, tables) {
 					console.log('ok, call next ');
 					//remap tables, if user has define the same table use user define
 					for (var i in tables) {
+						var autoDefTable = tbs[i];
 						tbs[i] = tables[i];
+						tbs[i]._src = autoDefTable;
 					}
 					tables = tbs;
 
@@ -343,9 +371,20 @@ crud.init = function(app, tables) {
 					name:df[0],
 					type:df[1]
 				}
+				if (df.length>2) {
+					column.extra = _.rest(df, 2).join("");
+				}else {
+					column.extra = "";
+				}
+
+				if (column.extra.indexOf("p")!=-1) {
+					et.pkColumn = column;
+					et.pk = column.name;
+				}
+
 				et.cols.push(column);
 				et.listCols.push(column.name);
-				seq[column.name] = getSeqColumnType(column.type);
+				seq[column.name] = getSeqColumnType(column);
 
 				if (column.type=="d") {
 					var methodName = "get" + column.name;
@@ -362,12 +401,39 @@ crud.init = function(app, tables) {
 				var listCs = et.list.split(" ");
 				et.listCols = listCs;
 			}
-			//not insert time 
+			//not use sequelize auto insert time 
 			insM.timestamps = false;
 			insM.freezeTableName = true;
             console.log('tb:' + et.table);
 			et.seqObj = sequelize.define(et.table, seq, insM);
-			_tables[i] = et;
+
+			if (et.pk==null) {
+				console.log("not support table [" + et.table  + "] that do not has an primaryKey");
+				console.log("auto try to fix");
+				if (et._src!=null) {
+					var srcCls = et._src.columns.split(" ");
+					for (var i=0; i<srcCls.length; i++) {
+						var cl = srcCls[i];
+						if (cl.indexOf("/p")!=-1) {
+							console.log('found pk');
+
+							var df = cl.split("/");
+							var column = {
+								name:df[0],
+								type:df[1]
+							}
+							
+							column.extra = _.rest(df, 2).join("");
+							et.pkColumn = column;
+							et.pk = column.name;
+							_tables[et.table] = et;
+							break;
+						}
+					}
+				}
+			}else {
+				_tables[i] = et;
+			}
 		}
 		console.log('buildTables complete');
 		callback();

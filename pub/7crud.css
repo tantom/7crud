@@ -21,13 +21,19 @@ table td {
 .nav a {
 	text-decoration:none;
 }
-
+.columnDef {
+	color:gray;
+}
 .trodd {
 	background-color:#f7f7f7;
 }
 
 .tro {
 	background-color:#ffcc00;
+}
+
+li {
+	line-height:30px;
 }
 
 .crudName {
