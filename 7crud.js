@@ -26,14 +26,18 @@ function getSeqColumnType(c) {
 		t.type = Sequelize.STRING;
 	}
 
-	if (c.extra.indexOf("p")!=-1) {
+	if (c.hasExtra("p")) {
 		t.primaryKey = true;
+	}
+	if (c.hasExtra("n")) {
+		t.validate = {};
+		t.validate.notNull = true;
 	}
 
 	return t;
 }
 
-function save(req, res) {		
+function save(req, res, next) {		
 	var et = _tables[req.params.name];
     for (var i in req.body) {
 		if (req.body[i]=="") {
@@ -42,9 +46,7 @@ function save(req, res) {
 	}
 	
 	console.log('bodys:' + JSON.stringify(req.body));
-	//带有id属性以更新的方式进行
 	if (req.body._id) {
-		//id 以@开头的话,表示进行删除操作
 		if (req.body._id.indexOf("@")==0) {
 			var etId = req.body._id.substring(1);
 			console.log('etId:' + etId);
@@ -54,6 +56,12 @@ function save(req, res) {
 				});
 			});
 		}else {
+			var simObj = et.seqObj.build(req.body);
+			var errors = simObj.validate();
+			if (errors) {
+				next(new Error(_.values(errors)));
+				return;
+			}
 			et.seqObj.find(req.body._id).success(function(data) {
 				data.updateAttributes(req.body).success(function() {
 					res.end('{}');
@@ -61,7 +69,13 @@ function save(req, res) {
 			});
 		}
 	}else {
-		et.seqObj.create(req.body).success(function(task) {
+		var simObj = et.seqObj.build(req.body);
+		var errors = simObj.validate();
+		if (errors) {
+			next(new Error(_.values(errors)));
+			return;
+		}
+		simObj.save().success(function(task) {
 			res.end('{}');
 		});
 	}
@@ -79,15 +93,22 @@ function add(req, res) {
 		var col = et.cols[i];
 		sb.push('<tr><td>');
 		sb.push(col.name);
+		if (col.hasExtra("n")) {
+			sb.push(" <span class=notNull>*</span>");
+		}
 		sb.push('</td><td>');
 		var val = "";
+		var cls = "";
+		if (col.hasExtra("n")) {
+			cls = 'class="required"';
+		}
 		if (col.type=="s" || col.type=="i") {
-		    var disableStr = col.extra.indexOf("a")!=-1?"disabled":"";
-			sb.push("<input type=text name=" + col.name + " value=\"" + val  + "\" " + disableStr  + " >");
+		    var disableStr = col.hasExtra('a')?"disabled":"";
+			sb.push("<input type=text name=" + col.name + " value=\"" + val  + "\" " + disableStr  + " " + cls  + " >");
 		}else if (col.type=="t") {
-			sb.push("<textarea style='width:100%;height:100px' name=" + col.name + ">" + val  + "</textarea>")
+			sb.push("<textarea style='width:100%;height:100px' name=" + col.name + " " + cls + " >" + val  + "</textarea>")
 		}else if (col.type=="d") {
-			sb.push('<input type=text name=' + col.name + ' value="' + val + '" tt.impl=jdPicker>');
+			sb.push('<input type=text name=' + col.name + ' value="' + val + '" tt.impl=jdPicker ' + cls + '>');
 		}
 		sb.push('</td></tr>');
 	}
@@ -110,8 +131,9 @@ function edit(req, res) {
 	});
 
 	function render(data) {
-		//这里的表单是一个动态生成的表单
 		var sb = [];
+		var cls = "";
+
 		sb.push('<form  action="/crud/' + etName + '/save" redirect="/crud/' + etName + '/list">');
 		sb.push('<table width=100%>');
 		
@@ -120,17 +142,28 @@ function edit(req, res) {
 			var col = et.cols[i];
 			sb.push('<tr><td>');
 			sb.push(col.name);
+
+			if (col.hasExtra("n")) {
+				sb.push(" <span class=notNull>*</span>");
+			}
+
 			sb.push('</td><td>');
 			var val = data[col.name];
 			val = val==null?"":val;
+
+			var cls = "";
+			if (col.hasExtra("n")) {
+				cls = 'class="required"';
+			}
+
 			if (col.type=="s" || col.type=="i") {
-				var disableStr = col.extra.indexOf("a")!=-1?"readonly":"";
-				sb.push("<input type=text name=" + col.name + " value=\"" + val  + "\" " + disableStr + ">");
+				var disableStr = col.hasExtra("a")?"readonly":"";
+				sb.push("<input type=text name=" + col.name + " value=\"" + val  + "\" " + disableStr + " " + cls + ">");
 			}else if (col.type=="t") {
-				sb.push("<textarea style='width:100%;height:100px' name=" + col.name + ">" + val  + "</textarea>")
+				sb.push("<textarea " + cls  + "style='width:100%;height:100px' name=" + col.name + ">" + val  + "</textarea>")
 			}else if (col.type=="d") {
-			    val = data["get" + col.name]();	
-				sb.push('<input type=text name=' + col.name + ' value="' + val + '" tt.impl=jdPicker>');
+				val = moment(val).format("YYYY/MM/DD");
+				sb.push('<input ' + cls + ' type=text name=' + col.name + ' value="' + val + '" tt.impl=jdPicker>');
 			}
 			sb.push('</td></tr>');
 		}
@@ -144,7 +177,7 @@ function edit(req, res) {
 	}
 };
 
-function listAll(req, res) {
+function index(req, res) {
     if (req.cookies.admin!='junzi') {
 		res.redirect('/crud/login');
 		return;
@@ -164,7 +197,7 @@ function list(req, res) {
     var en = req.params.name;
 	var et = _tables[en];
 	var sb = [];
-	var pageNav = '<a href="/crud/' + en + '/add">add new record</a>';
+	var pageNav ='<span style="font-weight:bold">[' + en + ']</span> <a href="/crud/' + en + '/add">add new record</a>';
 	sb.push('<table width=100%  tt.impl=Lister tt.url="/crud/' + en  + '/list/json" >');
 	sb.push('<thead><tr>');
 	// loop the define to list the columns
@@ -214,12 +247,18 @@ function listJson(req, res) {
 		if (!_.contains(condi.attributes, et.pk)) {
 			condi.attributes.push(et.pk);
 		}
-		console.log(sys.inspect(et.pkColumn));
-		console.log(sys.inspect(condi.attributes));
 		condi.order = "";
 		et.seqObj.findAll(condi).success(function(mds) { 
 			data.rows = mds;
-			// console.log("get datas:\n" + JSON.stringify(data));
+			//format rows date to viewable format, @todo support show time
+			et.dateCols.forEach(function(dateCol) {
+				data.rows.forEach(function(row) {
+					var colVal = row[dateCol];
+					row[dateCol] = moment(colVal).format("YYYY/MM/DD");
+				});
+			});
+			
+			console.log("get datas:\n" + JSON.stringify(data));
 			res.send(data);
 			res.end();
 		}).error(function(error) {
@@ -233,7 +272,7 @@ function listJson(req, res) {
 
 function login(req, res) {
     var sb = [];
-	sb.push('<form action=/crud/login redirect=/crud/list>');
+	sb.push('<form action=/crud/login redirect=/crud>');
 	sb.push('<input type=text name=adminPass value="">');
 	sb.push('<input type=button value=login onclick="crudLogin(event)">');
 	sb.push('</form>');
@@ -269,9 +308,15 @@ crud.conf = function(db, user, pass) {
 
 crud.init = function(app, tables) {
 	var tbs = {};
+	if (tables==null)
+		tables = [];
+
 	async.series([scanTables, buildTables, initServlets], function(err){
 		if (err) {
-			throw "can't not init with error:" + err;	
+			throw "7crud: can't not init with error:" + err;	
+		}else { 
+			console.log('7crud: init success for tables:' + _.keys(_tables));
+			console.log('7crud: visit http://localhost:port/crud');
 		}
 	});
 
@@ -298,7 +343,7 @@ crud.init = function(app, tables) {
 						var sb = [];
 						for (var i=0; i < rows.length; i++) {
 							var row = rows[i];
-							console.log(sys.inspect(row));
+							console.log('row:' + sys.inspect(row));
 							var s = row.Field + "/";
 							if (row.Type.indexOf('int')==0 || 
 								row.Type.indexOf('tinyint')==0) {
@@ -320,11 +365,13 @@ crud.init = function(app, tables) {
 							if (row.Key.indexOf('PRI')==0) {
 								s += "/p";
 							}
+							if (row.Null.indexOf('NO')==0) {
+								s += "/n";
+							}
 
 							sb.push(s);
 						}
 						tbs[tableName].columns = sb.join(" ");
-						console.log(tableName + ' columns:' + tbs[tableName].columns);
 						callback();
 					});
 				}, 3);
@@ -335,7 +382,6 @@ crud.init = function(app, tables) {
 				}
 
 				q.drain = function() {
-					console.log('ok, call next ');
 					//remap tables, if user has define the same table use user define
 					for (var i in tables) {
 						var autoDefTable = tbs[i];
@@ -359,6 +405,7 @@ crud.init = function(app, tables) {
 			et.table = i;
 			et.cols = [];
 			et.listCols = [];
+			et.dateCols = [];
 			//根据字段的定义生成sequelize的数据模型
 			var seq = {}, cl, df;
 			var cls = et.columns.split(" ");
@@ -376,8 +423,11 @@ crud.init = function(app, tables) {
 				}else {
 					column.extra = "";
 				}
+				column.hasExtra = function(ex) {
+					return this.extra.indexOf(ex)!=-1;
+				}
 
-				if (column.extra.indexOf("p")!=-1) {
+				if (column.hasExtra("p")) {
 					et.pkColumn = column;
 					et.pk = column.name;
 				}
@@ -387,14 +437,7 @@ crud.init = function(app, tables) {
 				seq[column.name] = getSeqColumnType(column);
 
 				if (column.type=="d") {
-					var methodName = "get" + column.name;
-					var dateCol = column.name;
-					insM.instanceMethods[methodName] = function() {
-						var d = this[dateCol];
-						if (d==null)
-							return "";
-						return moment(d).format("YYYY/MM/DD");
-					}
+					et.dateCols.push(column.name);
 				}
 			}
 			if (et.list!=null) {
@@ -404,19 +447,15 @@ crud.init = function(app, tables) {
 			//not use sequelize auto insert time 
 			insM.timestamps = false;
 			insM.freezeTableName = true;
-            console.log('tb:' + et.table);
 			et.seqObj = sequelize.define(et.table, seq, insM);
 
 			if (et.pk==null) {
-				console.log("not support table [" + et.table  + "] that do not has an primaryKey");
-				console.log("auto try to fix");
+				console.log("7crud: not support table [" + et.table  + "] that do not has an primaryKey");
 				if (et._src!=null) {
 					var srcCls = et._src.columns.split(" ");
 					for (var i=0; i<srcCls.length; i++) {
 						var cl = srcCls[i];
 						if (cl.indexOf("/p")!=-1) {
-							console.log('found pk');
-
 							var df = cl.split("/");
 							var column = {
 								name:df[0],
@@ -435,13 +474,12 @@ crud.init = function(app, tables) {
 				_tables[i] = et;
 			}
 		}
-		console.log('buildTables complete');
 		callback();
 	}
 
 	function initServlets(callback) {
 		app.post('/crud/:name/save', save);
-		app.get('/crud/list', listAll);
+		app.get('/crud', index);
 		app.get('/crud/:name/add', add);
 		app.get('/crud/:name/list/json/:page', listJson);
 		app.get('/crud/:name/list', list);
@@ -449,7 +487,6 @@ crud.init = function(app, tables) {
 		app.get('/crud/login', login);
 		app.post('/crud/login', doLogin);
 		app.get('/crud-pub/:file', pubFile);
-		console.log('init servlets complete');
 		callback();
 	}
 }
@@ -461,7 +498,6 @@ function pubFile(req, res) {
 }
 
 function renderViewHtml(str, pageNav) {
-	console.log('pageNav:' + pageNav);
 	return ejs.render(viewHtml, {
 		insideHtml:str,
 		pageNav:pageNav,

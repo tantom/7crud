@@ -1,6 +1,9 @@
 7CRUD
 ================================
 simple nodejs app that for backend maintain mysql database
+current version note:
+only support mysql
+list create update delete
 
 install-manual
 --------------
@@ -15,28 +18,30 @@ install-npm
 
 use 
 -------------
-create table for test, struct like 
+create table for test
 ````
-name:varchar
-code:text
-hash:varchar
-updateTime:datetime
-downCount:integer
-desc:varchar
+	CREATE TABLE `MyTable` (
+			`theId` int(11) NOT NULL,
+			`name` varchar(45) NOT NULL,
+			`title` varchar(45) DEFAULT NULL,
+			`content` text,
+			`date` datetime NOT NULL,
+			PRIMARY KEY (`theId`)
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8
 ````
 
 add below code in you app.js
 ````
-var tables = {
-	tbName:{
-			columns:"name/s code/t hash/s updateTime/d downCount/i desc/s",
-			list:"id name desc"
-		}
-}
-
 var crud = require("7crud");
 crud.conf("db", "root", "pass");
-crud.init(app, tables);
+crud.init(app);
 ````
-nav http://localhost:3000/crud/list for start crud
+nav http://localhost:3000/crud for start crud
 
+example
+--------------------
+please create table first
+````
+cd example
+node app.js
+````

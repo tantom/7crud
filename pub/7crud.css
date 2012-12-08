@@ -18,11 +18,15 @@ table td {
 	padding:10px;
 }
 
+label.error { float: none; color: red; padding-left: .5em; vertical-align: top; }
 .nav a {
 	text-decoration:none;
 }
 .columnDef {
 	color:gray;
+}
+.notNull {
+	color:red;
 }
 .trodd {
 	background-color:#f7f7f7;

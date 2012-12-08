@@ -13,6 +13,10 @@ $(document).ready(function() {
 			eval("$(this)." + impl + "()");
 		}
 	});
+
+	$("form").each(function() {
+		$(this).validate();	
+	});
 });
 
 
@@ -20,10 +24,15 @@ $(document).ready(function() {
 //save the form with ajax please call it from a button inside the form tag
 function crudSave(e) {
 	var f = $(e.target).closest('form');
+	if (!f.valid()) {
+		return;
+	}
 	if (!f) 
 		return;
 	$.post(f.attr('action'), f.toJSON(), function(res) {
 		document.location = f.attr('redirect');	
+	}).error(function(err) {
+		alert(err.responseText);
 	});
 }
 
