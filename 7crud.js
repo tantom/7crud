@@ -16,12 +16,14 @@ function getSeqColumnType(c) {
     
 	if (c.type=="s" || c.type=="bs") {
 		t.type = Sequelize.STRING;
-	}else if (c.type=="d") {
+	}else if (c.type=="d" || c.type=="dt") {
 		t.type = Sequelize.DATE;
 	}else if (c.type=="t") {
 	    t.type = Sequelize.TEXT;
 	}else if (c.type=="i") {
 		t.type = Sequelize.INTEGER;
+	}else if (c.type=="f") {
+		t.type = Sequelize.FLOAT;
 	}else {
 		t.type = Sequelize.STRING;
 	}
@@ -45,7 +47,7 @@ function save(req, res, next) {
 		}
 	}
 	
-	console.log('bodys:' + JSON.stringify(req.body));
+	// console.log('bodys:' + JSON.stringify(req.body));
 	if (req.body._id) {
 		if (req.body._id.indexOf("@")==0) {
 			var etId = req.body._id.substring(1);
@@ -107,8 +109,14 @@ function add(req, res) {
 			sb.push("<input type=text name=" + col.name + " value=\"" + val  + "\" " + disableStr  + " " + cls  + " >");
 		}else if (col.type=="t" || col.type=="bs") {
 			sb.push("<textarea style='width:100%;height:100px' name=" + col.name + " " + cls + " >" + val  + "</textarea>")
-		}else if (col.type=="d") {
-			sb.push('<input type=text name=' + col.name + ' value="' + val + '" tt.impl=jdPicker ' + cls + '>');
+		}else if (col.type=="d" || col.type=="dt") {
+			var fm = "";
+			if (col.type=="dt") {
+				fm = "{format:'%Y-%m-%e %k:%i'}";
+			}else {
+				fm = "{format:'%Y-%m-%e'}";
+			}
+			sb.push('<input id=IP_' + col.name + '' + cls + ' type=text name=' + col.name + ' value="' + val + '" tt.impl="AnyTime_picker" tt.params="' + fm + '">');
 		}
 		sb.push('</td></tr>');
 	}
@@ -161,13 +169,24 @@ function edit(req, res) {
 				sb.push("<input type=text name=" + col.name + " value=\"" + val  + "\" " + disableStr + " " + cls + ">");
 			}else if (col.type=="t" || col.type=="bs") {
 				sb.push("<textarea " + cls  + "style='width:100%;height:100px' name=" + col.name + ">" + val  + "</textarea>")
-			}else if (col.type=="d") {
-				if (val) {
-					val = moment(val).format("YYYY/MM/DD");
+			}else if (col.type=="d" || col.type=="dt") {
+				var fm = "";
+				if (col.type=="dt") {
+					if (val) {
+						val = moment(val).format("YYYY-MM-DD HH:mm");
+					}else {
+						val = "";
+					}
+					fm = "{format:'%Y-%m-%e %k:%i'}";
 				}else {
-					val = "";
+					if (val) {
+						val = moment(val).format("YYYY-MM-DD");
+					}else {
+						val = "";
+					}
+					fm = "{format:'%Y-%m-%e'}";
 				}
-				sb.push('<input ' + cls + ' type=text name=' + col.name + ' value="' + val + '" tt.impl=jdPicker>');
+				sb.push('<input id=IP_' + col.name + '' + cls + ' type=text name=' + col.name + ' value="' + val + '" tt.impl="AnyTime_picker" tt.params="' + fm + '">');
 			}
 			sb.push('</td></tr>');
 		}
@@ -259,11 +278,19 @@ function listJson(req, res) {
 				data.rows.forEach(function(row) {
 					var colVal = row[dateCol];
 					if (colVal) {
-						row[dateCol] = moment(colVal).format("YYYY/MM/DD");
+						row[dateCol] = moment(colVal).format("YYYY-MM-DD");
 					}
 				});
 			});
 			
+			et.timeCols.forEach(function(dateCol) {
+				data.rows.forEach(function(row) {
+					var colVal = row[dateCol];
+					if (colVal) {
+						row[dateCol] = moment(colVal).format("YYYY-MM-DD HH:mm");
+					}
+				});
+			});
 			//console.log("get datas:\n" + JSON.stringify(data));
 			res.send(data);
 			res.end();
@@ -365,7 +392,13 @@ crud.init = function(app, tables) {
 							}else if (row.Type.indexOf('text')==0) {
 								s += "t";
 							}else if (row.Type.indexOf('date')==0) {
-								s += "d";
+								if (row.Type.indexOf('datetime')==0) {
+									s += "dt";
+								}else {
+									s += "d";
+								}
+							}else if (row.Type.indexOf('float')==0) {
+								s += "f";
 							}else { //otherwise use as string 
 								s += "s";
 							}
@@ -473,6 +506,7 @@ function buildTableObj(et, tbName) {
 	et.cols = [];
 	et.listCols = [];
 	et.dateCols = [];
+	et.timeCols = [];
 
 	var seq = {}, cl, df;
 	var cls = et.columns.split(",");
@@ -505,6 +539,9 @@ function buildTableObj(et, tbName) {
 
 		if (column.type=="d") {
 			et.dateCols.push(column.name);
+		}
+		if (column.type=="dt") {
+			et.timeCols.push(column.name);
 		}
 	}
 	if (et.list!=null) {

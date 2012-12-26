@@ -10,12 +10,29 @@ $(document).ready(function() {
 	$("input").each(function() {
 		var impl = $(this).attr("tt.impl");
 		if (impl) {
-			eval("$(this)." + impl + "()");
+			var params = $(this).attr("tt.params");
+			if (!params) 
+				params = "";
+			eval("$(this)." + impl + "(" + params + ")");
 		}
 	});
 
 	$("form").each(function() {
 		$(this).validate();	
+	});
+
+	$("li").each(function(i) {
+		$(this).hover(function(){
+			$(this).toggleClass("tro");
+		})
+		$(this).click(function(e) {
+			var d = $(e.target).closest('li');
+			var links = d.find("a");
+			if (links.length>0) {
+				d.removeClass("tro");
+				links[0].click();
+			}
+		});
 	});
 });
 
