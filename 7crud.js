@@ -141,10 +141,8 @@ function edit(req, res) {
 	function render(data) {
 		var sb = [];
 		var cls = "";
-
 		sb.push('<form  action="/crud/' + etName + '/save" redirect="/crud/' + etName + '/list">');
 		sb.push('<table width=100%>');
-		
 		sb.push('<input type=hidden name=_id value=' + req.params.id + '>');
 		for (var i=0; i<et.cols.length; i++) {
 			var col = et.cols[i];
@@ -248,7 +246,32 @@ function list(req, res) {
 function listJson(req, res) {
 	var et = _tables[req.params.name];
 	var reqPage = req.params.page;
-	
+	var ps = req.params.params;
+	var pss = ps.split('&');
+	var queryPs = {};
+	pss.forEach(function(p) {
+		if (p.indexOf('o-')==0) {
+			p = p.substring(2);
+			var tmp = [];
+			if (p.length>0) {
+				var orderCols = p.split("|");
+				orderCols.forEach(function(o) {
+					if (o.indexOf('@')==0) {
+						tmp.push('`' + o.substring(1) + "` ");
+					}else {
+						tmp.push('`' + o + '` desc');
+					}
+				});
+			}
+			queryPs.orders = tmp.join(",");
+		}else if (p.indexOf('f-')==0) {
+			p = p.substring(2);
+			queryPs.filter = p;
+		};
+	});
+
+	// console.log('order:' + queryPs.orders);
+
 	if (!reqPage) {
 		reqPage = 0;
 	}
@@ -270,7 +293,7 @@ function listJson(req, res) {
 		if (!_.contains(condi.attributes, et.pk)) {
 			condi.attributes.push(et.pk);
 		}
-		condi.order = "";
+		condi.order = queryPs.orders;
 		et.seqObj.findAll(condi).success(function(mds) { 
 			data.rows = mds;
 			//format rows date to viewable format, @todo support show time
@@ -295,7 +318,7 @@ function listJson(req, res) {
 			res.send(data);
 			res.end();
 		}).error(function(error) {
-			console.log("error");
+			console.log("error:" + error);
 			res.end();	
 		})
 	}).error(function(error) {
@@ -491,7 +514,7 @@ crud.init = function(app, tables) {
 		app.post('/crud/:name/save', save);
 		app.get('/crud', index);
 		app.get('/crud/:name/add', add);
-		app.get('/crud/:name/list/json/:page', listJson);
+		app.get('/crud/:name/list/json/:page/:params', listJson);
 		app.get('/crud/:name/list', list);
 		app.get('/crud/:name/edit/:id', edit);
 		app.get('/crud/login', login);

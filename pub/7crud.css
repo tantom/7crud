@@ -2,32 +2,42 @@ body {
 	margin:0px;
 	padding:0px;
 }
+
 table {
 	border-collapse: collapse;
 }
+
 table thead {
 	background-color:#0c99dd;
 	color:white;
 }
+
 table td {
 	padding:3px;
 	border: 1px solid #999999;
 }
+
 .nav {
 	background-color:#d3230b;	
 	padding:10px;
 }
 
-label.error { float: none; color: red; padding-left: .5em; vertical-align: top; }
+label.error { 
+	float: none; color: red; padding-left: .5em; vertical-align: top; 
+}
+
 .nav a {
 	text-decoration:none;
 }
+
 .columnDef {
 	color:gray;
 }
+
 .notNull {
 	color:red;
 }
+
 .trodd {
 	background-color:#f7f7f7;
 }
@@ -35,6 +45,11 @@ label.error { float: none; color: red; padding-left: .5em; vertical-align: top; 
 .tro {
 	cursor:default;
 	background-color:#ffcc00;
+}
+
+.trop {
+	cursor:default;
+	background-color:purple;
 }
 
 li {
@@ -46,15 +61,29 @@ li {
 	font-size:20px;
 	font-weight:bold;
 }
+
 .main {
 	padding:10px;
 }
+
 .colName {
 	background-color:#f7f7f7;
 	width:100px;
 }
+
 #pageNav {
 	padding:3px;
 	background:#e0e0e0;
 }
 
+.tOrderDown {
+	background-image:url(/crud-pub/down.png);
+	background-position:right;
+	background-repeat:no-repeat;
+}
+
+.tOrderUp {
+	background-image:url(/crud-pub/up.png);
+	background-position:right;
+	background-repeat:no-repeat;
+}

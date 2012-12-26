@@ -138,6 +138,38 @@ function Lister(tb) {
     var _bd = _tb.find("tbody");
 	var _ct = _bd.html();
     var _ju = _tb.find("tfoot tr td:last");
+    var _th = _tb.find("thead");
+
+	//add sort action to head
+	var ths = _th.find("td");
+	ths.each(function() {
+		$(this).disableSelection();
+		$(this).hover(function() {
+			$(this).toggleClass("trop");
+		});
+
+		$(this).click(function(e) {
+			var d = $(e.target).closest('td');
+			var srcOrder = d.attr('tt.order');
+			d.removeClass('tOrderUp');
+			d.removeClass('tOrderDown');
+			if (srcOrder) {
+				if (srcOrder=='1') {
+					d.attr('tt.order', '2');
+					d.addClass('tOrderUp');
+				}else if (srcOrder=='2') {
+					d.attr('tt.order', '0');
+				}else if (srcOrder=='0') {
+					d.attr('tt.order', '1');
+					d.addClass('tOrderDown');
+				}
+			}else {
+				d.attr('tt.order', '1');
+				d.addClass('tOrderDown');
+			}
+			load();
+		});
+	});
 
     this.load = load;
 	var _tokens = [];
@@ -153,8 +185,20 @@ function Lister(tb) {
 	_tokens.push(tmp);
 	setTimeout(load, 10);
     function load() {
+		var orders = [];
+		ths.each(function() {
+			var od = $(this).attr('tt.order');
+			if (od!=null && od*1>0) {
+				var colName = $(this).text();
+				if (od=='1') {
+					orders.push(colName);
+				}else {
+					orders.push('@'+colName);
+				}
+			}
+		});
         var currentPage = _tb.attr("tt.current") || 0;
-        var u = _url + "/" + currentPage;
+        var u = _url + "/" + currentPage + "/o-" + orders.join("|") + "&f-";
         $.ajax({
             type: "get",
             url: u,
@@ -231,19 +275,14 @@ function Lister(tb) {
             lt.push(" <span>jump<input type=text class=ip_text style='width:30px;text-align:center' tt.total.page=" + pTotalPage + ">page <a href=#### tt.type=Jump>GO</a></span>");
         }
 
-
         _ju.html(lt.join(""));
-
-
         var dls = _ju.find("A");
         dls.each(function(idx) {
             $(this).click(function(evt) {
                 var type = $(this).attr("tt.type");
                 if (type == null)
                     return;
-
                 var currentPage = _tb.attr("tt.current") || 0;
-
                 var targetPage = null;
 
                 switch (type) {
@@ -321,3 +360,12 @@ function Lister(tb) {
         return tmp.join("");
     }
 }
+
+(function($){
+    $.fn.disableSelection = function() {
+        return this
+                 .attr('unselectable', 'on')
+                 .css('user-select', 'none')
+                 .on('selectstart', false);
+    };
+})(jQuery);
