@@ -48,7 +48,9 @@ li {
 .main {
 	padding:10px;
 }
-
+.colName {
+	background-color:#f7f7f7;
+}
 #pageNav {
 	padding:3px;
 	background:#e0e0e0;

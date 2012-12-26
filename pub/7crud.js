@@ -19,7 +19,18 @@ $(document).ready(function() {
 	});
 });
 
-
+//save the def config and reload to memory tables
+function crudDefSave(e) {
+	var f = $(e.target).closest('form');
+	if (!f.valid()) {
+		return;
+	}
+	$.post(f.attr('action'), f.toJSON(), function (res) {
+		document.location = f.attr('redirect');
+	}).error(function(err) {
+		alert(err.responseText);	
+	});
+}
 
 //save the form with ajax please call it from a button inside the form tag
 function crudSave(e) {
@@ -161,8 +172,6 @@ function Lister(tb) {
 		}
 		
         _bd.append(rowString.join(""))
-       
-
 
         var pRows = data.totalrows;
         var pCurrent = data.currentpage;
@@ -173,10 +182,7 @@ function Lister(tb) {
         _tb.attr("tt.current", pCurrent);
         _tb.attr("tt.perpage", pPerPage);
         _tb.attr("tt.totalpage", pTotalPage);
-
-
         var lt = [];
-
         if (pTotalPage != 0) {
             lt.push("page:<span style='color:red'> ");
             lt.push(pCurrent * 1 + 1);

@@ -1,4 +1,5 @@
 var Sequelize = require("sequelize");
+var maintainTbName = "7crud";
 var crud = {};
 var _tables = [];
 var sequelize;
@@ -10,11 +11,10 @@ var sys = require("sys");
 var _ = require("underscore");
 var viewHtml = fs.readFileSync(__dirname + '/pub/main.ejs', 'utf8');
 
-//将简化定义的字段换成sequelize的字段类型
 function getSeqColumnType(c) {
     var t = {};
-
-	if (c.type=="s") {
+    
+	if (c.type=="s" || c.type=="bs") {
 		t.type = Sequelize.STRING;
 	}else if (c.type=="d") {
 		t.type = Sequelize.DATE;
@@ -91,7 +91,7 @@ function add(req, res) {
 
 	for (var i=0; i<et.cols.length; i++) {
 		var col = et.cols[i];
-		sb.push('<tr><td>');
+		sb.push('<tr><td class=colName>');
 		sb.push(col.name);
 		if (col.hasExtra("n")) {
 			sb.push(" <span class=notNull>*</span>");
@@ -105,7 +105,7 @@ function add(req, res) {
 		if (col.type=="s" || col.type=="i") {
 		    var disableStr = col.hasExtra('a')?"disabled":"";
 			sb.push("<input type=text name=" + col.name + " value=\"" + val  + "\" " + disableStr  + " " + cls  + " >");
-		}else if (col.type=="t") {
+		}else if (col.type=="t" || col.type=="bs") {
 			sb.push("<textarea style='width:100%;height:100px' name=" + col.name + " " + cls + " >" + val  + "</textarea>")
 		}else if (col.type=="d") {
 			sb.push('<input type=text name=' + col.name + ' value="' + val + '" tt.impl=jdPicker ' + cls + '>');
@@ -140,7 +140,7 @@ function edit(req, res) {
 		sb.push('<input type=hidden name=_id value=' + req.params.id + '>');
 		for (var i=0; i<et.cols.length; i++) {
 			var col = et.cols[i];
-			sb.push('<tr><td>');
+			sb.push('<tr><td class=colName>');
 			sb.push(col.name);
 
 			if (col.hasExtra("n")) {
@@ -159,10 +159,14 @@ function edit(req, res) {
 			if (col.type=="s" || col.type=="i") {
 				var disableStr = col.hasExtra("a")?"readonly":"";
 				sb.push("<input type=text name=" + col.name + " value=\"" + val  + "\" " + disableStr + " " + cls + ">");
-			}else if (col.type=="t") {
+			}else if (col.type=="t" || col.type=="bs") {
 				sb.push("<textarea " + cls  + "style='width:100%;height:100px' name=" + col.name + ">" + val  + "</textarea>")
 			}else if (col.type=="d") {
-				val = moment(val).format("YYYY/MM/DD");
+				if (val) {
+					val = moment(val).format("YYYY/MM/DD");
+				}else {
+					val = "";
+				}
 				sb.push('<input ' + cls + ' type=text name=' + col.name + ' value="' + val + '" tt.impl=jdPicker>');
 			}
 			sb.push('</td></tr>');
@@ -197,7 +201,7 @@ function list(req, res) {
     var en = req.params.name;
 	var et = _tables[en];
 	var sb = [];
-	var pageNav ='<span style="font-weight:bold">[' + en + ']</span> <a href="/crud/' + en + '/add">add new record</a>';
+	var pageNav ='<span style="font-weight:bold">[' + en + ']</span> <a href="/crud/' + en + '/add">add new record</a><a href="/crud/' + en + '/def" style="float:right">def</a>';
 	sb.push('<table width=100%  tt.impl=Lister tt.url="/crud/' + en  + '/list/json" >');
 	sb.push('<thead><tr>');
 	// loop the define to list the columns
@@ -254,11 +258,13 @@ function listJson(req, res) {
 			et.dateCols.forEach(function(dateCol) {
 				data.rows.forEach(function(row) {
 					var colVal = row[dateCol];
-					row[dateCol] = moment(colVal).format("YYYY/MM/DD");
+					if (colVal) {
+						row[dateCol] = moment(colVal).format("YYYY/MM/DD");
+					}
 				});
 			});
 			
-			console.log("get datas:\n" + JSON.stringify(data));
+			//console.log("get datas:\n" + JSON.stringify(data));
 			res.send(data);
 			res.end();
 		}).error(function(error) {
@@ -327,7 +333,8 @@ crud.init = function(app, tables) {
 			user     : crud.config.user,
 			password : crud.config.pass
 		});
-
+	    //tag for check is it has the maintain table crud7
+		var bHasMTTable = false; //if not auto create it
 		conn.connect(function(err) {
 			conn.query('show tables', function(err, rows, fields) {
 				var colName = fields[0].name;
@@ -343,13 +350,18 @@ crud.init = function(app, tables) {
 						var sb = [];
 						for (var i=0; i < rows.length; i++) {
 							var row = rows[i];
-							console.log('row:' + sys.inspect(row));
+							// console.log('row:' + sys.inspect(row));
 							var s = row.Field + "/";
 							if (row.Type.indexOf('int')==0 || 
 								row.Type.indexOf('tinyint')==0) {
 								s += "i";
 							}else if (row.Type.indexOf('varchar')==0) {
-								s += "s";
+								//if string length more than 100 set to big string 
+								if (row.Type.length>11) {
+									s += "bs";
+								}else {
+									s += "s";
+								}
 							}else if (row.Type.indexOf('text')==0) {
 								s += "t";
 							}else if (row.Type.indexOf('date')==0) {
@@ -371,7 +383,8 @@ crud.init = function(app, tables) {
 
 							sb.push(s);
 						}
-						tbs[tableName].columns = sb.join(" ");
+						tbs[tableName].columns = sb.join(",");
+						tbs[tableName]._src = tbs[tableName].columns;
 						callback();
 					});
 				}, 3);
@@ -379,6 +392,9 @@ crud.init = function(app, tables) {
 				//get all table columns
 				for (var i in tbs) {
 					q.push(i);
+					if (i==maintainTbName) {
+						bHasMTTable = true;
+					}
 				}
 
 				q.drain = function() {
@@ -386,12 +402,41 @@ crud.init = function(app, tables) {
 					for (var i in tables) {
 						var autoDefTable = tbs[i];
 						tbs[i] = tables[i];
-						tbs[i]._src = autoDefTable;
 					}
 					tables = tbs;
+					
+					//build the maintain table
+					if (!bHasMTTable) {
+						conn.query("CREATE  TABLE `" + maintainTbName + "` (" + 
+						"`name` VARCHAR(50) NOT NULL ," + 
+						"`def` VARCHAR(2000) NULL ," + 
+						"`list` VARCHAR(2000) NULL ," + 
+						"`view` TEXT NULL ," +
+						"PRIMARY KEY (`name`) )", function(err, rows, fields){
+							console.log('auto create maintain table [' + maintainTbName  + ']');
+							var tbMT = {};
+							tbMT.columns =  "name/s/p/n,def/bs,list/bs,view/t";
+							tables[maintainTbName] = tbMT;
+							conn.end();
+							callback();
+						});
+					}else {
+						//update db obj model with def 
+						conn.query("select * from `" + maintainTbName + "`", function(err, rows, fields){
+							rows.forEach(function(row) {
+								var reDef = tables[row.name];
+								if (reDef) {
+									reDef.columns = row.def;
+									reDef.list = row.list;
+								}else {
+									//@todo table droped delete def config
+								}
+							});		
 
-					conn.end();
-					callback();
+							conn.end();
+							callback();
+						});
+					}
 				}
 
 			});	
@@ -399,85 +444,17 @@ crud.init = function(app, tables) {
 	}
 
 	function buildTables(callback) {
-		//将模型转换为sequelize的数据模型
+		console.log('tbs:\n' + sys.inspect(tables));
 		for (var i in tables) {
 			var et = tables[i];
-			et.table = i;
-			et.cols = [];
-			et.listCols = [];
-			et.dateCols = [];
-			//根据字段的定义生成sequelize的数据模型
-			var seq = {}, cl, df;
-			var cls = et.columns.split(" ");
-			var insM = {};
-			insM.instanceMethods = {};
-			for (var j=0; j<cls.length; j++) {
-				cl = cls[j];
-				df = cl.split("/");
-				var column = {
-					name:df[0],
-					type:df[1]
-				}
-				if (df.length>2) {
-					column.extra = _.rest(df, 2).join("");
-				}else {
-					column.extra = "";
-				}
-				column.hasExtra = function(ex) {
-					return this.extra.indexOf(ex)!=-1;
-				}
-
-				if (column.hasExtra("p")) {
-					et.pkColumn = column;
-					et.pk = column.name;
-				}
-
-				et.cols.push(column);
-				et.listCols.push(column.name);
-				seq[column.name] = getSeqColumnType(column);
-
-				if (column.type=="d") {
-					et.dateCols.push(column.name);
-				}
-			}
-			if (et.list!=null) {
-				var listCs = et.list.split(" ");
-				et.listCols = listCs;
-			}
-			//not use sequelize auto insert time 
-			insM.timestamps = false;
-			insM.freezeTableName = true;
-			et.seqObj = sequelize.define(et.table, seq, insM);
-
-			if (et.pk==null) {
-				console.log("7crud: not support table [" + et.table  + "] that do not has an primaryKey");
-				if (et._src!=null) {
-					var srcCls = et._src.columns.split(" ");
-					for (var i=0; i<srcCls.length; i++) {
-						var cl = srcCls[i];
-						if (cl.indexOf("/p")!=-1) {
-							var df = cl.split("/");
-							var column = {
-								name:df[0],
-								type:df[1]
-							}
-							
-							column.extra = _.rest(df, 2).join("");
-							et.pkColumn = column;
-							et.pk = column.name;
-							_tables[et.table] = et;
-							break;
-						}
-					}
-				}
-			}else {
-				_tables[i] = et;
-			}
+			buildTableObj(et, i);
 		}
 		callback();
 	}
 
 	function initServlets(callback) {
+		app.get('/crud/:name/def', def);
+		app.post('/crud/:name/def/save', defSave);
 		app.post('/crud/:name/save', save);
 		app.get('/crud', index);
 		app.get('/crud/:name/add', add);
@@ -491,10 +468,165 @@ crud.init = function(app, tables) {
 	}
 }
 
+function buildTableObj(et, tbName) {
+	et.table = tbName;
+	et.cols = [];
+	et.listCols = [];
+	et.dateCols = [];
+
+	var seq = {}, cl, df;
+	var cls = et.columns.split(",");
+	var insM = {};
+	insM.instanceMethods = {};
+	for (var j=0; j<cls.length; j++) {
+		cl = cls[j];
+		df = cl.split("/");
+		var column = {
+			name:df[0],
+			type:df[1]
+		}
+		if (df.length>2) {
+			column.extra = _.rest(df, 2).join("");
+		}else {
+			column.extra = "";
+		}
+		column.hasExtra = function(ex) {
+			return this.extra.indexOf(ex)!=-1;
+		}
+
+		if (column.hasExtra("p")) {
+			et.pkColumn = column;
+			et.pk = column.name;
+		}
+
+		et.cols.push(column);
+		et.listCols.push(column.name);
+		seq[column.name] = getSeqColumnType(column);
+
+		if (column.type=="d") {
+			et.dateCols.push(column.name);
+		}
+	}
+	if (et.list!=null) {
+		var listCs = et.list.split(",");
+		et.listCols = listCs;
+	}
+	//not use sequelize auto insert time 
+	insM.timestamps = false;
+	insM.freezeTableName = true;
+	et.seqObj = sequelize.define(et.table, seq, insM);
+
+	if (et.pk==null) {
+		console.log("7crud: not support table [" + et.table  + "] that do not has an primaryKey");
+		if (et._src!=null) {
+			var srcCls = et._src.split(",");
+			for (var i=0; i<srcCls.length; i++) {
+				var cl = srcCls[i];
+				if (cl.indexOf("/p")!=-1) {
+					var df = cl.split("/");
+					var column = {
+						name:df[0],
+						type:df[1]
+					}
+
+					column.extra = _.rest(df, 2).join("");
+					et.pkColumn = column;
+					et.pk = column.name;
+					_tables[et.table] = et;
+					break;
+				}
+			}
+		}
+	}else {
+		_tables[tbName] = et;
+	}
+}
+
+function defSave(req, res) {
+	var et = _tables[req.params.name];
+    for (var i in req.body) {
+		if (req.body[i]=="") {
+			req.body[i] = null;
+		}
+	}
+	
+	//if found update otherwise add def
+	var mt = _tables[maintainTbName];
+	mt.seqObj.find(req.params.name).success(function(data) {
+	  if (!data) { //add 
+		 data = {};
+		 data.name = req.params.name;
+		 data.def = req.body.def;
+		 data.list = req.body.list;
+		 data.view = req.body.view;
+		 mt.seqObj.build(data).save().success(function(obj) {
+			//update memory db obj
+			et.columns = data.def;
+			et.list = data.list;
+			buildTableObj(et, et.table);
+		 	res.end('{}');
+		 }).error(function(error){
+			res.end();
+		 });
+	  }else { //update
+		 data.list = req.body.list;
+		 data.view = req.body.view;
+		 data.def = req.body.def;
+		 data.updateAttributes(data).success(function(data) {
+			//update memory db obj
+			et.columns = data.def;
+			et.list = data.list;
+			buildTableObj(et, et.table);
+		 	res.end('{}');
+		 }).error(function(error) {
+		 	res.end();
+		 });
+	  }
+	});
+}
+
+function def(req, res) {
+	var etName = req.params.name;
+	var et = _tables[etName];
+	var mt = _tables[maintainTbName];
+	mt.seqObj.find(etName).success(function(data) {
+		if (!data) {
+			data = {};
+			data.def = et.columns;
+			data.list = _.values(et.listCols);
+			data.view = "";
+		}else {
+			if (!data.def)
+				data.def = "";
+			if (!data.list)
+				data.list = "";
+			if (!data.view)
+				data.view = "";
+		}
+
+		var sb = [];
+		sb.push('<form action="/crud/' + etName + '/def/save" redirect="/crud/' + etName + '/list">');
+		sb.push('<table width=100%>');
+		sb.push('<tr><td>src</td><td>' + et._src + '</td></tr>');
+		sb.push('<tr><td>def</td><td><textarea name=def style="width:100%;height:40px">' + data.def  +'</textarea></td></tr>');
+		sb.push('<tr><td>list</td><td><textarea name=list style="width:100%;height:40px">' + data.list  + '</textarea></td></tr>');
+		sb.push('<tr><td>view</td><td><textarea name=view style="width:100%;height:40px">' + data.view + '</textarea></td></tr>');
+		sb.push("<tr><td colspan=2 align=center><input type=button onclick=crudDefSave(event) value='save def'></td></tr>");
+		sb.push('</table>');
+		sb.push('</form>');
+		res.send(renderViewHtml(sb.join(""), "<a href='javascript:history.go(-1)'>back</a>"));
+		res.end();
+	}).error(function(error) {
+		console.log('error:' + error);
+	});
+}
+
 function pubFile(req, res) {
-	var str = fs.readFileSync(__dirname + "/pub/" + req.params.file);
-	res.send(str);
-	res.end();
+	fs.readFile(__dirname + "/pub/" + req.params.file, function (err, data) {
+		if (err) throw err;
+		res.send(data);
+		res.end();
+	});
 }
 
 function renderViewHtml(str, pageNav) {
