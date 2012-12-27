@@ -55,6 +55,12 @@ function save(req, res, next) {
 			et.seqObj.find(etId).success(function(data) {
 				data.destroy().success(function() {
 					res.end('{}');
+
+					//if the table is maintain table delete the object
+					if (et.key == maintainTbName) {
+						_tables[etId] = null;
+						delete _tables[etId];
+					}
 				});
 			});
 		}else {
@@ -66,10 +72,28 @@ function save(req, res, next) {
 			}
 			et.seqObj.find(req.body._id).success(function(data) {
 				data.updateAttributes(req.body).success(function() {
+					//update maintain table reference
+					if (et.key == maintainTbName) {
+						var modiEt = _tables[req.body._id];
+						if (modiEt) {
+							//@todo bug sequelize can't update primaryKey's value
+							//so the web PRIMARY input now set to readonly
+							modiEt.columns = req.body.def;
+							modiEt.list = req.body.list;
+							modiEt.key = req.body.name;
+							modiEt.table = req.body.table || modiEt.key;
+							//delete src reference
+							_tables[req.body._id] = null;
+							delete _tables[req.body._id];
+							buildTableObj(modiEt);
+						}
+					}
 					res.end('{}');
 				});
 			});
 		}
+
+		
 	}else {
 		var simObj = et.seqObj.build(req.body);
 		var errors = simObj.validate();
@@ -78,6 +102,14 @@ function save(req, res, next) {
 			return;
 		}
 		simObj.save().success(function(task) {
+			if (et.key == maintainTbName) {
+				var addEt = {};
+				addEt.columns = req.body.def;
+				addEt.list = req.body.list;
+				addEt.key = req.body.name;
+				addEt.table = req.body.table || addEt.key;
+				buildTableObj(addEt);
+			}
 			res.end('{}');
 		});
 	}
@@ -108,7 +140,7 @@ function add(req, res) {
 		    var disableStr = col.hasExtra('a')?"disabled":"";
 			sb.push("<input type=text name=" + col.name + " value=\"" + val  + "\" " + disableStr  + " " + cls  + " >");
 		}else if (col.type=="t" || col.type=="bs") {
-			sb.push("<textarea style='width:100%;height:100px' name=" + col.name + " " + cls + " >" + val  + "</textarea>")
+			sb.push("<textarea name=" + col.name + " " + cls + " >" + val  + "</textarea>")
 		}else if (col.type=="d" || col.type=="dt") {
 			var fm = "";
 			if (col.type=="dt") {
@@ -163,10 +195,11 @@ function edit(req, res) {
 			}
 
 			if (col.type=="s" || col.type=="i") {
-				var disableStr = col.hasExtra("a")?"readonly":"";
+				var disableStr = col.hasExtra("a")||col.hasExtra("p")?"readonly":"";
+
 				sb.push("<input type=text name=" + col.name + " value=\"" + val  + "\" " + disableStr + " " + cls + ">");
 			}else if (col.type=="t" || col.type=="bs") {
-				sb.push("<textarea " + cls  + "style='width:100%;height:100px' name=" + col.name + ">" + val  + "</textarea>")
+				sb.push("<textarea " + cls  + " name=" + col.name + ">" + val  + "</textarea>")
 			}else if (col.type=="d" || col.type=="dt") {
 				var fm = "";
 				if (col.type=="dt") {
@@ -207,7 +240,10 @@ function index(req, res) {
 	sb.push("<ul>");
 	for (var i in _tables) {
 		var et = _tables[i];
-		sb.push('<li><a href=/crud/' + i + '/list >' + i + '</a> <span class=columnDef>' + et.columns  + '</span></li>');
+		var cls = "";
+		if (i==maintainTbName) 
+			cls = "class=tMTable";
+		sb.push('<li><a href=/crud/' + i + '/list ' + cls + '>' + i + '</a> <span class=columnDef>' + et.columns  + '</span></li>');
 	}
 	sb.push("</ul>");
 	res.send(renderViewHtml(sb.join(""), ""));
@@ -439,8 +475,12 @@ crud.init = function(app, tables) {
 
 							sb.push(s);
 						}
+
 						tbs[tableName].columns = sb.join(",");
+						tbs[tableName].table = tableName;
+						tbs[tableName].key = tableName;
 						tbs[tableName]._src = tbs[tableName].columns;
+						tbs[tableName]._scan = true; //mark as scaned tables
 						callback();
 					});
 				}, 3);
@@ -458,6 +498,10 @@ crud.init = function(app, tables) {
 					for (var i in tables) {
 						var autoDefTable = tbs[i];
 						tbs[i] = tables[i];
+						if (!tbs[i].table)
+							tbs[i].table = i;
+						if (!tbs[i].key) 
+							tbs[i].key = i;
 					}
 					tables = tbs;
 					
@@ -465,13 +509,19 @@ crud.init = function(app, tables) {
 					if (!bHasMTTable) {
 						conn.query("CREATE  TABLE `" + maintainTbName + "` (" + 
 						"`name` VARCHAR(50) NOT NULL ," + 
+						"`table` VARCHAR(50) NULL , " + 
+						"`desc` VARCHAR(2000) NULL , " + 
 						"`def` VARCHAR(2000) NULL ," + 
 						"`list` VARCHAR(2000) NULL ," + 
 						"`view` TEXT NULL ," +
 						"PRIMARY KEY (`name`) )", function(err, rows, fields){
 							console.log('auto create maintain table [' + maintainTbName  + ']');
 							var tbMT = {};
-							tbMT.columns =  "name/s/p/n,def/bs,list/bs,view/t";
+							tbMT.columns =  "name/s/p/n,table/s,desc/bs/,def/bs,list/bs,view/t";
+							tbMT.key = maintainTbName;
+							tbMT.table = maintainTbName;
+							tbMT._src = tbMT.columns;
+							tbMT._scan = true;
 							tables[maintainTbName] = tbMT;
 							conn.end();
 							callback();
@@ -485,13 +535,21 @@ crud.init = function(app, tables) {
 									reDef.columns = row.def;
 									reDef.list = row.list;
 								}else {
+									//not exist table remap the table
+									var newDef = {};
+									newDef.columns = row.def;
+									newDef.list = row.list;
+									newDef.table = row.table;
+									newDef.key = row.name;
+									newDef._src = newDef.columns;
+									tables[row.name] = newDef;
 									//@todo table droped delete def config
 								}
 							});		
 
 							conn.end();
 							callback();
-						});
+						}); //end query from maintain table 
 					}
 				}
 
@@ -503,7 +561,7 @@ crud.init = function(app, tables) {
 		console.log('tbs:\n' + sys.inspect(tables));
 		for (var i in tables) {
 			var et = tables[i];
-			buildTableObj(et, i);
+			buildTableObj(et);
 		}
 		callback();
 	}
@@ -524,8 +582,7 @@ crud.init = function(app, tables) {
 	}
 }
 
-function buildTableObj(et, tbName) {
-	et.table = tbName;
+function buildTableObj(et) {
 	et.cols = [];
 	et.listCols = [];
 	et.dateCols = [];
@@ -598,7 +655,7 @@ function buildTableObj(et, tbName) {
 			}
 		}
 	}else {
-		_tables[tbName] = et;
+		_tables[et.key] = et;
 	}
 }
 
@@ -623,7 +680,7 @@ function defSave(req, res) {
 			//update memory db obj
 			et.columns = data.def;
 			et.list = data.list;
-			buildTableObj(et, et.table);
+			buildTableObj(et);
 		 	res.end('{}');
 		 }).error(function(error){
 			res.end();
@@ -636,7 +693,7 @@ function defSave(req, res) {
 			//update memory db obj
 			et.columns = data.def;
 			et.list = data.list;
-			buildTableObj(et, et.table);
+			buildTableObj(et);
 		 	res.end('{}');
 		 }).error(function(error) {
 		 	res.end();
