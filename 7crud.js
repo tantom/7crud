@@ -82,6 +82,7 @@ function save(req, res, next) {
 							modiEt.list = req.body.list;
 							modiEt.key = req.body.name;
 							modiEt.table = req.body.table || modiEt.key;
+
 							//delete src reference
 							_tables[req.body._id] = null;
 							delete _tables[req.body._id];
@@ -108,7 +109,13 @@ function save(req, res, next) {
 				addEt.list = req.body.list;
 				addEt.key = req.body.name;
 				addEt.table = req.body.table || addEt.key;
-				buildTableObj(addEt);
+
+				var srcTable = _tables[addEt.table];
+				if (srcTable) {
+					addEt._cols = srcTable._cols;
+					addEt._def = srcTable._def;
+					buildTableObj(addEt);
+				}
 			}
 			res.end('{}');
 		});
@@ -155,8 +162,26 @@ function add(req, res) {
 	sb.push("<tr><td colspan=2 align=center>");
 	sb.push("<input type=button onclick=crudSave(event) value=\"add new\">");
 	sb.push("</td></tr>");
-	sb.push('</table>');
+	sb.push("</table>");
 	sb.push("</form>");
+	
+	//if it's maintain table add then add event to table
+	if (et.key==maintainTbName) {
+		sb.push("<script>");
+		sb.push("var acTables = [");
+		var tmp = [];
+		for (var i in _tables) {
+			var tb = _tables[i];
+			if (tb._scan) {
+				tmp.push("{id:'" + tb.table + "',name:'" + tb.table + "'}");
+			}
+		}
+		sb.push(tmp.join(","));
+
+		sb.push("];");
+		sb.push("</script>");
+		sb.push("<script>addManTableEvts()</script>");
+	}
 
 	res.send(renderViewHtml(sb.join(""), "<a href='javascript:history.go(-1)'>back</a>"));
 	res.end();
@@ -227,6 +252,26 @@ function edit(req, res) {
 		sb.push("</td></tr>");
 		sb.push('</table>');
 		sb.push("</form>");
+
+
+		//if it's maintain table add then add event to table
+		if (et.key==maintainTbName) {
+			sb.push("<script>");
+			sb.push("var acTables = [");
+			var tmp = [];
+				for (var i in _tables) {
+					var tb = _tables[i];
+					if (tb._scan) {
+						tmp.push("{id:'" + tb.table + "',name:'" + tb.table + "'}");
+					}
+				}
+				sb.push(tmp.join(","));
+
+				sb.push("];");
+				sb.push("</script>");
+				sb.push("<script>addManTableEvts()</script>");
+		}
+
 		return sb.join("");
 	}
 };
@@ -389,6 +434,20 @@ function doLogin(req, res) {
 	}
 }
 
+function command(req, res) {
+	if (req.params.cmd=="table") {
+		var tb = _tables[req.params.p];
+		if (!tb) {
+			res.end("{}");
+		}else {
+			res.end('{"columns":"' + tb.columns + '"}');
+		}
+
+		return;
+	}
+	res.end("");
+}
+
 crud.conf = function(db, user, pass) {	
 	crud.config = {
 		db:db,
@@ -434,8 +493,11 @@ crud.init = function(app, tables) {
 					conn.query('show columns from ' + tableName, function(err, rows, fields) {
 						// console.log(sys.inspect(rows));
 						var sb = [];
+						var cols = [];
+						var colsMap = {};
 						for (var i=0; i < rows.length; i++) {
 							var row = rows[i];
+							cols.push(row.Field);
 							// console.log('row:' + sys.inspect(row));
 							var s = row.Field + "/";
 							if (row.Type.indexOf('int')==0 || 
@@ -474,12 +536,14 @@ crud.init = function(app, tables) {
 							}
 
 							sb.push(s);
+							colsMap[row.Field] = s; 
 						}
 
-						tbs[tableName].columns = sb.join(",");
+						tbs[tableName].columns = cols.join(",");
 						tbs[tableName].table = tableName;
 						tbs[tableName].key = tableName;
-						tbs[tableName]._src = tbs[tableName].columns;
+						tbs[tableName]._def = sb.join(",");
+						tbs[tableName]._cols = colsMap;
 						tbs[tableName]._scan = true; //mark as scaned tables
 						callback();
 					});
@@ -509,18 +573,26 @@ crud.init = function(app, tables) {
 					if (!bHasMTTable) {
 						conn.query("CREATE  TABLE `" + maintainTbName + "` (" + 
 						"`name` VARCHAR(50) NOT NULL ," + 
-						"`table` VARCHAR(50) NULL , " + 
 						"`desc` VARCHAR(2000) NULL , " + 
+						"`table` VARCHAR(50) NULL , " + 
 						"`def` VARCHAR(2000) NULL ," + 
 						"`list` VARCHAR(2000) NULL ," + 
 						"`view` TEXT NULL ," +
 						"PRIMARY KEY (`name`) )", function(err, rows, fields){
 							console.log('auto create maintain table [' + maintainTbName  + ']');
 							var tbMT = {};
-							tbMT.columns =  "name/s/p/n,table/s,desc/bs/,def/bs,list/bs,view/t";
+							var colsMap = {};
+							colsMap.name = "name/s/p/n";
+							colsMap.table = "table/s";
+							colsMap.desc = "desc/bs";
+							colsMap.def = "def/bs";
+							colsMap.list = "list/bs";
+							colsMap.view = "view/t";
+							tbMT._cols = colsMap;
+							tbMT._def =  "name,table,desc,def,list,view";
 							tbMT.key = maintainTbName;
 							tbMT.table = maintainTbName;
-							tbMT._src = tbMT.columns;
+							tbMT.columns = "name,table,desc,def,list,view";
 							tbMT._scan = true;
 							tables[maintainTbName] = tbMT;
 							conn.end();
@@ -541,8 +613,13 @@ crud.init = function(app, tables) {
 									newDef.list = row.list;
 									newDef.table = row.table;
 									newDef.key = row.name;
-									newDef._src = newDef.columns;
-									tables[row.name] = newDef;
+
+									var srcTable = tables[newDef.table]; 
+									if (srcTable) {
+										newDef._def = srcTable._def;
+										newDef._cols = srcTable._cols;
+										tables[row.name] = newDef;
+									}
 									//@todo table droped delete def config
 								}
 							});		
@@ -578,9 +655,13 @@ crud.init = function(app, tables) {
 		app.get('/crud/login', login);
 		app.post('/crud/login', doLogin);
 		app.get('/crud-pub/:file', pubFile);
+		app.get('/crud-command/:cmd/:p', command);
+		app.get('/json/:name/:page/:params', listJson);
 		callback();
 	}
 }
+
+
 
 function buildTableObj(et) {
 	et.cols = [];
@@ -594,6 +675,7 @@ function buildTableObj(et) {
 	insM.instanceMethods = {};
 	for (var j=0; j<cls.length; j++) {
 		cl = cls[j];
+		cl = et._cols[cl];
 		df = cl.split("/");
 		var column = {
 			name:df[0],
@@ -635,8 +717,8 @@ function buildTableObj(et) {
 
 	if (et.pk==null) {
 		console.log("7crud: not support table [" + et.table  + "] that do not has an primaryKey");
-		if (et._src!=null) {
-			var srcCls = et._src.split(",");
+		if (et._def!=null) {
+			var srcCls = et._def.split(",");
 			for (var i=0; i<srcCls.length; i++) {
 				var cl = srcCls[i];
 				if (cl.indexOf("/p")!=-1) {
@@ -724,13 +806,19 @@ function def(req, res) {
 		var sb = [];
 		sb.push('<form action="/crud/' + etName + '/def/save" redirect="/crud/' + etName + '/list">');
 		sb.push('<table width=100%>');
-		sb.push('<tr><td>src</td><td>' + et._src + '</td></tr>');
-		sb.push('<tr><td>def</td><td><textarea name=def style="width:100%;height:40px">' + data.def  +'</textarea></td></tr>');
-		sb.push('<tr><td>list</td><td><textarea name=list style="width:100%;height:40px">' + data.list  + '</textarea></td></tr>');
+		sb.push('<tr><td>table</td><td>' + et.table + '</td></tr>');
+		sb.push('<tr><td>columns</td><td id=srcTableCols></td></tr>');
+		sb.push('<tr><td>def</td><td><textarea name=def>' + data.def  +'</textarea></td></tr>');
+		sb.push('<tr><td>list</td><td><textarea name=list>' + data.list  + '</textarea></td></tr>');
 		sb.push('<tr><td>view</td><td><textarea name=view style="width:100%;height:40px">' + data.view + '</textarea></td></tr>');
 		sb.push("<tr><td colspan=2 align=center><input type=button onclick=crudDefSave(event) value='save def'></td></tr>");
 		sb.push('</table>');
 		sb.push('</form>');
+
+		sb.push('<script>');
+		sb.push('addManTableEvts("' + et.table + '");');
+		sb.push('</script>');
+
 		res.send(renderViewHtml(sb.join(""), "<a href='javascript:history.go(-1)'>back</a>"));
 		res.end();
 	}).error(function(error) {

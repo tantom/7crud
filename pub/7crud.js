@@ -36,6 +36,127 @@ $(document).ready(function() {
 	});
 });
 
+function buildTokenObj(val) {
+	var vs = $.trim(val).split(",");
+	var tmp = [];
+	for (var i=0; i<vs.length; i++) {
+		var v = vs[i];
+		if (v!="") {
+			tmp.push({id:v, name:v});
+		}
+	}
+	if (tmp.length==0) {
+		return null;
+	}
+	return tmp;
+}
+
+//add events for maintain tables 
+function addManTableEvts(defTableName) {
+	$(document).ready(function() {
+		var ipTable = $("input[name='table']");
+		var ipDef = $("textarea[name='def']");
+		var ipList = $("textarea[name='list']");
+		var ipDefMap = [];
+		ipDef.tokenInput(ipDefMap, {
+			theme: "facebook",
+			hintText: "",
+			searchingText:"",
+			searchDelay: 10,
+			preventDuplicates: true,
+			noResultsText:"",
+			animateDropdown:false,
+			prePopulate:buildTokenObj(ipDef.val())
+		});
+		ipList.tokenInput(ipDefMap, {
+			theme: "facebook",
+			hintText: "",
+			searchingText:"",
+			searchDelay: 10,
+			preventDuplicates: true,
+			noResultsText:"",
+			animateDropdown:false,
+			prePopulate:buildTokenObj(ipList.val())
+		});
+	
+		if (ipTable.length>0) {
+			ipTable.tokenInput(acTables, {
+				theme: "facebook",
+				hintText: "",
+				searchingText: "",
+				searchDelay: 10,
+				animateDropdown: false,
+				preventDuplicates: true,
+				tokenLimit:1,
+				noResultsText:"",
+				prePopulate:buildTokenObj(ipTable.val()),
+				onAdd: function (item) {
+					//call backend to get the table define
+					$.ajax({
+						type: 'get',
+						url: '/crud-command/table/' + item.name,
+						data: '',
+						dataType:'json',
+						success: function(res) {
+							var ipDef = $("textarea[name='def']");
+							var cls = res.columns.split(",");
+							ipDef.tokenInput("clear");
+							ipDefMap.length = 0;
+							for (var i=0; i<cls.length; i++) {
+								var cl = cls[i];
+								ipDef.tokenInput("add", {id:cl, name:cl});
+								ipDefMap.push({id:cl, name:cl});
+							}
+						},
+						error:function(res) {
+							alert(res.responseText);
+						}
+					});
+				},
+				onDelete: function (item) {
+					ipDef.tokenInput("clear");
+					ipList.tokenInput("clear");
+					ipDefMap.length = 0;
+				}
+			});
+		
+			//if the iptable val not empty then call to load the token objects
+			if (ipTable.val().length>0) {
+				$.ajax({
+					type: 'get',
+					url: '/crud-command/table/' + ipTable.val(),
+					data: '',
+					dataType:'json',
+					success: function(res) {
+						var cls = res.columns.split(",");
+						for (var i=0; i<cls.length; i++) {
+							var cl = cls[i];
+							ipDefMap.push({id:cl, name:cl});
+						}
+					}
+				});
+			}
+		}//end if has iptable
+
+		if (ipTable.length==0) { //def page
+			$.ajax({
+			  type: 'get',
+			  url: '/crud-command/table/' + defTableName,
+			  data: '',
+			  dataType:'json',
+			  success: function(res) {
+				  var cls = res.columns.split(",");
+				  for (var i=0; i<cls.length; i++) {
+					  var cl = cls[i];
+					  ipDefMap.push({id:cl, name:cl});
+				  }
+				  $("#srcTableCols").html(res.columns);
+			  }
+			});
+		}
+	});
+}
+
 //save the def config and reload to memory tables
 function crudDefSave(e) {
 	var f = $(e.target).closest('form');
