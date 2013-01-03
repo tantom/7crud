@@ -99,12 +99,15 @@ function addManTableEvts(defTableName) {
 						dataType:'json',
 						success: function(res) {
 							var ipDef = $("textarea[name='def']");
+							var ipList = $("textarea[name='list']");
 							var cls = res.columns.split(",");
 							ipDef.tokenInput("clear");
+							ipList.tokenInput("clear");
 							ipDefMap.length = 0;
 							for (var i=0; i<cls.length; i++) {
 								var cl = cls[i];
 								ipDef.tokenInput("add", {id:cl, name:cl});
+								ipList.tokenInput("add", {id:cl, name:cl});
 								ipDefMap.push({id:cl, name:cl});
 							}
 						},

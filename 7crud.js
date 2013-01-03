@@ -55,7 +55,8 @@ function save(req, res, next) {
 			et.seqObj.find(etId).success(function(data) {
 				data.destroy().success(function() {
 					res.end('{}');
-
+					console.log('et.key:' + et.key);
+					console.log('mtname:' + maintainTbName);
 					//if the table is maintain table delete the object
 					if (et.key == maintainTbName) {
 						_tables[etId] = null;
@@ -81,8 +82,9 @@ function save(req, res, next) {
 							modiEt.columns = req.body.def;
 							modiEt.list = req.body.list;
 							modiEt.key = req.body.name;
+							modiEt.sort = req.body.sort;
 							modiEt.table = req.body.table || modiEt.key;
-
+							modiEt._cols = _tables[modiEt.table]._cols;
 							//delete src reference
 							_tables[req.body._id] = null;
 							delete _tables[req.body._id];
@@ -108,6 +110,7 @@ function save(req, res, next) {
 				addEt.columns = req.body.def;
 				addEt.list = req.body.list;
 				addEt.key = req.body.name;
+				addEt.sort = req.body.sort;
 				addEt.table = req.body.table || addEt.key;
 
 				var srcTable = _tables[addEt.table];
@@ -143,11 +146,15 @@ function add(req, res) {
 		if (col.hasExtra("n")) {
 			cls = 'class="required"';
 		}
-		if (col.type=="s" || col.type=="i") {
+		if (col.type=="s" || col.type=="i" || col.type=="f") {
 		    var disableStr = col.hasExtra('a')?"disabled":"";
 			sb.push("<input type=text name=" + col.name + " value=\"" + val  + "\" " + disableStr  + " " + cls  + " >");
 		}else if (col.type=="t" || col.type=="bs") {
-			sb.push("<textarea name=" + col.name + " " + cls + " >" + val  + "</textarea>")
+			var plusStyle = "";
+			if (col.type=="t") {
+				plusStyle = " style='height:300px' ";
+			}
+			sb.push("<textarea " + plusStyle  +" name=" + col.name + " " + cls + " >" + val  + "</textarea>")
 		}else if (col.type=="d" || col.type=="dt") {
 			var fm = "";
 			if (col.type=="dt") {
@@ -172,7 +179,7 @@ function add(req, res) {
 		var tmp = [];
 		for (var i in _tables) {
 			var tb = _tables[i];
-			if (tb._scan) {
+			if (tb._scan && tb.table!=maintainTbName) {
 				tmp.push("{id:'" + tb.table + "',name:'" + tb.table + "'}");
 			}
 		}
@@ -219,12 +226,16 @@ function edit(req, res) {
 				cls = 'class="required"';
 			}
 
-			if (col.type=="s" || col.type=="i") {
+			if (col.type=="s" || col.type=="i" || col.type=="f") {
 				var disableStr = col.hasExtra("a")||col.hasExtra("p")?"readonly":"";
 
 				sb.push("<input type=text name=" + col.name + " value=\"" + val  + "\" " + disableStr + " " + cls + ">");
 			}else if (col.type=="t" || col.type=="bs") {
-				sb.push("<textarea " + cls  + " name=" + col.name + ">" + val  + "</textarea>")
+				var plusStyle = "";
+				if (col.type=="t") {
+					plusStyle = " style='height:300px' ";
+				}
+				sb.push("<textarea " + plusStyle  + "" + cls  + " name=" + col.name + ">" + val  + "</textarea>")
 			}else if (col.type=="d" || col.type=="dt") {
 				var fm = "";
 				if (col.type=="dt") {
@@ -261,7 +272,7 @@ function edit(req, res) {
 			var tmp = [];
 				for (var i in _tables) {
 					var tb = _tables[i];
-					if (tb._scan) {
+					if (tb._scan && tb.table!=maintainTbName) {
 						tmp.push("{id:'" + tb.table + "',name:'" + tb.table + "'}");
 					}
 				}
@@ -288,7 +299,21 @@ function index(req, res) {
 		var cls = "";
 		if (i==maintainTbName) 
 			cls = "class=tMTable";
-		sb.push('<li><a href=/crud/' + i + '/list ' + cls + '>' + i + '</a> <span class=columnDef>' + et.columns  + '</span></li>');
+		var icon = "table.png";
+		if (!et._scan) 
+			icon = "mask.png";
+		sb.push('<li><img src=/crud-pub/' + icon + ' border=0 align=abstop> <a href=/crud/' + i + '/list ' + cls + '>' + i + '</a> <span class=columnDef>' + et.columns  + '</span>');
+		if (!et._scan) {
+			sb.push(' [' + et.table + ']');
+		}
+		if (et.table!=maintainTbName) {
+			var path = "/json/" + i;
+			sb.push(" <a href='" + path  + "' title='" + path + "' >");
+			sb.push("<img src=/crud-pub/link.png border=0 title='" + path + "'>");
+			sb.push("</a>");
+		}
+
+		sb.push('</li>');
 	}
 	sb.push("</ul>");
 	res.send(renderViewHtml(sb.join(""), ""));
@@ -300,7 +325,7 @@ function list(req, res) {
 	var et = _tables[en];
 	var sb = [];
 	var pageNav ='<span style="font-weight:bold">[' + en + ']</span> <a href="/crud/' + en + '/add">add new record</a><a href="/crud/' + en + '/def" style="float:right">def</a>';
-	sb.push('<table width=100%  tt.impl=Lister tt.url="/crud/' + en  + '/list/json" >');
+	sb.push('<table width=100%  tt.impl=Lister tt.url="/crud/' + en  + '/list/json" id=Lister>');
 	sb.push('<thead><tr>');
 	// loop the define to list the columns
 	et.listCols.forEach(function(col) {
@@ -328,31 +353,47 @@ function listJson(req, res) {
 	var et = _tables[req.params.name];
 	var reqPage = req.params.page;
 	var ps = req.params.params;
-	var pss = ps.split('&');
+	if (reqPage==null) 
+		reqPage = 0;
 	var queryPs = {};
-	pss.forEach(function(p) {
-		if (p.indexOf('o-')==0) {
-			p = p.substring(2);
-			var tmp = [];
-			if (p.length>0) {
-				var orderCols = p.split("|");
-				orderCols.forEach(function(o) {
-					if (o.indexOf('@')==0) {
-						tmp.push('`' + o.substring(1) + "` ");
+	if (ps!=null) {
+		var pss = ps.split('&');
+		pss.forEach(function(p) {
+			if (p.indexOf('o-')==0) {
+				p = p.substring(2);
+				var tmp = [];
+				if (p.length>0) {
+					var orderCols = p.split("|");
+					orderCols.forEach(function(o) {
+						if (o.indexOf('@')==0) {
+							tmp.push('`' + o.substring(1) + "` ");
+						}else {
+							tmp.push('`' + o + '` desc');
+						}
+					});
+				}
+				queryPs.orders = tmp.join(",");
+
+				if (et.sort!=null) {
+					if (tmp.length>0) {
+						queryPs.orders = queryPs.orders + "," + et.sort;
 					}else {
-						tmp.push('`' + o + '` desc');
+						queryPs.orders = et.sort;
 					}
-				});
-			}
-			queryPs.orders = tmp.join(",");
-		}else if (p.indexOf('f-')==0) {
-			p = p.substring(2);
-			queryPs.filter = p;
-		};
-	});
-
-	// console.log('order:' + queryPs.orders);
-
+				}
+			}else if (p.indexOf('f-')==0) {
+				p = p.substring(2);
+				queryPs.filter = p;
+			};
+		});
+	}else {
+		if (et.sort!=null) {
+			queryPs.orders = et.sort;
+		}
+	}
+	console.log('et' + sys.inspect(et));
+	console.log('order:' + queryPs.orders);
+	
 	if (!reqPage) {
 		reqPage = 0;
 	}
@@ -575,9 +616,9 @@ crud.init = function(app, tables) {
 						"`name` VARCHAR(50) NOT NULL ," + 
 						"`desc` VARCHAR(2000) NULL , " + 
 						"`table` VARCHAR(50) NULL , " + 
-						"`def` VARCHAR(2000) NULL ," + 
+						"`def` VARCHAR(2000) NOT NULL ," + 
 						"`list` VARCHAR(2000) NULL ," + 
-						"`view` TEXT NULL ," +
+						"`sort` VARCHAR(2000) NULL ," +
 						"PRIMARY KEY (`name`) )", function(err, rows, fields){
 							console.log('auto create maintain table [' + maintainTbName  + ']');
 							var tbMT = {};
@@ -585,14 +626,14 @@ crud.init = function(app, tables) {
 							colsMap.name = "name/s/p/n";
 							colsMap.table = "table/s";
 							colsMap.desc = "desc/bs";
-							colsMap.def = "def/bs";
+							colsMap.def = "def/bs/n";
 							colsMap.list = "list/bs";
-							colsMap.view = "view/t";
+							colsMap.sort = "sort/bs";
 							tbMT._cols = colsMap;
-							tbMT._def =  "name,table,desc,def,list,view";
+							tbMT._def =  "name,table,desc,def,list,sort";
 							tbMT.key = maintainTbName;
 							tbMT.table = maintainTbName;
-							tbMT.columns = "name,table,desc,def,list,view";
+							tbMT.columns = "name,table,desc,def,list,sort";
 							tbMT._scan = true;
 							tables[maintainTbName] = tbMT;
 							conn.end();
@@ -606,6 +647,7 @@ crud.init = function(app, tables) {
 								if (reDef) {
 									reDef.columns = row.def;
 									reDef.list = row.list;
+									reDef.sort = row.sort;
 								}else {
 									//not exist table remap the table
 									var newDef = {};
@@ -613,6 +655,7 @@ crud.init = function(app, tables) {
 									newDef.list = row.list;
 									newDef.table = row.table;
 									newDef.key = row.name;
+									newDef.sort = row.sort;
 
 									var srcTable = tables[newDef.table]; 
 									if (srcTable) {
@@ -656,7 +699,7 @@ crud.init = function(app, tables) {
 		app.post('/crud/login', doLogin);
 		app.get('/crud-pub/:file', pubFile);
 		app.get('/crud-command/:cmd/:p', command);
-		app.get('/json/:name/:page/:params', listJson);
+		app.get('/json/:name/:page?/:params?', listJson);
 		callback();
 	}
 }
@@ -668,7 +711,7 @@ function buildTableObj(et) {
 	et.listCols = [];
 	et.dateCols = [];
 	et.timeCols = [];
-
+	console.log('etCols' + sys.inspect(et));
 	var seq = {}, cl, df;
 	var cls = et.columns.split(",");
 	var insM = {};
@@ -757,11 +800,12 @@ function defSave(req, res) {
 		 data.name = req.params.name;
 		 data.def = req.body.def;
 		 data.list = req.body.list;
-		 data.view = req.body.view;
+		 data.sort = req.body.sort;
 		 mt.seqObj.build(data).save().success(function(obj) {
 			//update memory db obj
 			et.columns = data.def;
 			et.list = data.list;
+			et.sort = data.sort;
 			buildTableObj(et);
 		 	res.end('{}');
 		 }).error(function(error){
@@ -769,12 +813,13 @@ function defSave(req, res) {
 		 });
 	  }else { //update
 		 data.list = req.body.list;
-		 data.view = req.body.view;
+		 data.sort = req.body.sort;
 		 data.def = req.body.def;
 		 data.updateAttributes(data).success(function(data) {
 			//update memory db obj
 			et.columns = data.def;
 			et.list = data.list;
+			et.sort = data.sort;
 			buildTableObj(et);
 		 	res.end('{}');
 		 }).error(function(error) {
@@ -793,14 +838,14 @@ function def(req, res) {
 			data = {};
 			data.def = et.columns;
 			data.list = _.values(et.listCols);
-			data.view = "";
+			data.sort = "";
 		}else {
 			if (!data.def)
 				data.def = "";
 			if (!data.list)
 				data.list = "";
-			if (!data.view)
-				data.view = "";
+			if (!data.sort)
+				data.sort = "";
 		}
 
 		var sb = [];
@@ -810,7 +855,7 @@ function def(req, res) {
 		sb.push('<tr><td>columns</td><td id=srcTableCols></td></tr>');
 		sb.push('<tr><td>def</td><td><textarea name=def>' + data.def  +'</textarea></td></tr>');
 		sb.push('<tr><td>list</td><td><textarea name=list>' + data.list  + '</textarea></td></tr>');
-		sb.push('<tr><td>view</td><td><textarea name=view style="width:100%;height:40px">' + data.view + '</textarea></td></tr>');
+		sb.push('<tr><td>sort</td><td><textarea name=sort>' + data.sort + '</textarea></td></tr>');
 		sb.push("<tr><td colspan=2 align=center><input type=button onclick=crudDefSave(event) value='save def'></td></tr>");
 		sb.push('</table>');
 		sb.push('</form>');

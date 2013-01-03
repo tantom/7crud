@@ -23,7 +23,19 @@ table td {
 }
 
 label.error { 
-	float: none; color: red; padding-left: .5em; vertical-align: top; 
+	float: none; 
+	color: red; 
+	padding-left: .5em; 
+	vertical-align: top; 
+}
+
+#Lister td {
+	word-break:break-all;
+	overflow:hidden;
+}
+
+#Lister thead td {
+	white-space:nowrap;
 }
 
 .nav a {
@@ -89,7 +101,7 @@ li {
 }
 
 .tMTable {
-	color:blue;
+	color:red;
 	font-weight:bold;
 	font-size:21px;
 }
