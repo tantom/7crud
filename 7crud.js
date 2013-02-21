@@ -288,7 +288,7 @@ function edit(req, res) {
 };
 
 function index(req, res) {
-    if (req.cookies.admin!='junzi') {
+    if (req.cookies.admin!=crud.config.pass) {
 		res.redirect('/crud/login');
 		return;
 	}
@@ -307,7 +307,7 @@ function index(req, res) {
 			sb.push(' [' + et.table + ']');
 		}
 		if (et.table!=maintainTbName) {
-			var path = "/json/" + i;
+			var path = "/json/list/" + i;
 			sb.push(" <a href='" + path  + "' title='" + path + "' >");
 			sb.push("<img src=/crud-pub/link.png border=0 title='" + path + "'>");
 			sb.push("</a>");
@@ -335,7 +335,7 @@ function list(req, res) {
 	sb.push('<tbody><tr>');
 	et.listCols.forEach(function(col, idx) {
 		if (idx==0) {
-			sb.push('<td><a href="/crud/' + en + '/edit/${' + et.pk + '}">${' + col + '}</a></td>'); 
+			sb.push('<td><a href="/crud/' + en + '/edit/${' + et.pk + '}">${' + col + '}</a><a href="/json/get/'+en+'/${' + et.pk  +'}"><img src=/crud-pub/link.png border=0 align=absbottom></a></td>'); 
 		}else {
 			sb.push('<td>${' + col + '}</td>');
 		}
@@ -348,6 +348,14 @@ function list(req, res) {
 	res.end();
 };
 
+function getJson(req, res) {
+	var et = _tables[req.params.name];
+	var id = req.params.id;
+	et.seqObj.find(req.params.id).success(function(data) {
+		res.send(data);
+		res.end();
+	});
+}
 
 function listJson(req, res) {
 	var et = _tables[req.params.name];
@@ -397,8 +405,13 @@ function listJson(req, res) {
 	if (!reqPage) {
 		reqPage = 0;
 	}
-	var perPage = 10;
-
+	
+	console.log('perPage:' + req.params.perPage);
+	var perPage = req.params.perPage;
+	if (perPage==null) {
+		perPage = 10;
+	}
+	
 	var condi = {};
 	var data = {};
 	et.seqObj.count(condi).success(function(c) {
@@ -450,7 +463,7 @@ function listJson(req, res) {
 
 function login(req, res) {
     var sb = [];
-	sb.push('<form action=/crud/login redirect=/crud>');
+	sb.push('<form action=/crud/login redirect=/crud method=post>');
 	sb.push('<input type=text name=adminPass value="">');
 	sb.push('<input type=button value=login onclick="crudLogin(event)">');
 	sb.push('</form>');
@@ -470,7 +483,7 @@ function doLogin(req, res) {
 		res.end();
 	}else {
 	    //set the admin login check token
-		res.cookie("admin", "junzi", { expires: 0, httpOnly: true });
+		res.cookie("admin", crud.config.pass, { expires: 0, httpOnly: true });
 		res.end("1");
 	}
 }
@@ -699,7 +712,8 @@ crud.init = function(app, tables) {
 		app.post('/crud/login', doLogin);
 		app.get('/crud-pub/:file', pubFile);
 		app.get('/crud-command/:cmd/:p', command);
-		app.get('/json/:name/:page?/:params?', listJson);
+		app.get('/json/list:perPage?/:name/:page?/:params?', listJson);
+		app.get('/json/get/:name/:id', getJson);
 		callback();
 	}
 }
