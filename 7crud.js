@@ -83,6 +83,7 @@ function save(req, res, next) {
 							modiEt.list = req.body.list;
 							modiEt.key = req.body.name;
 							modiEt.sort = req.body.sort;
+							modiEt.wherePs = req.body.wherePs;
 							modiEt.table = req.body.table || modiEt.key;
 							modiEt._cols = _tables[modiEt.table]._cols;
 							//delete src reference
