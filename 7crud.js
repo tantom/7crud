@@ -153,7 +153,7 @@ function add(req, res) {
 		}else if (col.type=="t" || col.type=="bs") {
 			var plusStyle = "";
 			if (col.type=="t") {
-				plusStyle = " style='height:300px' ";
+				plusStyle = " style='height:500px' ";
 			}
 			sb.push("<textarea " + plusStyle  +" name=" + col.name + " " + cls + " >" + val  + "</textarea>")
 		}else if (col.type=="d" || col.type=="dt") {
@@ -206,14 +206,20 @@ function edit(req, res) {
 	function render(data) {
 		var sb = [];
 		var cls = "";
+		sb.push('<script>');
+		sb.push('var submitCMS=[];');
+		sb.push('</script>');
 		sb.push('<form  action="/crud/' + etName + '/save" redirect="/crud/' + etName + '/list">');
 		sb.push('<table width=100%>');
 		sb.push('<input type=hidden name=_id value=' + req.params.id + '>');
 		for (var i=0; i<et.cols.length; i++) {
 			var col = et.cols[i];
+			var bEditor = false;
 			sb.push('<tr><td class=colName>');
 			sb.push(col.name);
-
+            if (col.name.indexOf("script")!=-1) {
+				bEditor = true;
+			}
 			if (col.hasExtra("n")) {
 				sb.push(" <span class=notNull>*</span>");
 			}
@@ -234,9 +240,11 @@ function edit(req, res) {
 			}else if (col.type=="t" || col.type=="bs") {
 				var plusStyle = "";
 				if (col.type=="t") {
-					plusStyle = " style='height:300px' ";
+					plusStyle = " style='height:500px' ";
 				}
-				sb.push("<textarea " + plusStyle  + "" + cls  + " name=" + col.name + ">" + val  + "</textarea>")
+				
+				sb.push("<textarea " + plusStyle  + "" + cls  + " name=" + col.name + " id=ID"+ col.name  +">" + val  + "</textarea>");
+					
 			}else if (col.type=="d" || col.type=="dt") {
 				var fm = "";
 				if (col.type=="dt") {
@@ -255,6 +263,21 @@ function edit(req, res) {
 					fm = "{format:'%Y-%m-%e'}";
 				}
 				sb.push('<input id=IP_' + col.name + '' + cls + ' type=text name=' + col.name + ' value="' + val + '" tt.impl="AnyTime_picker" tt.params="' + fm + '">');
+			}
+
+			if (bEditor) {
+				sb.push('<script>');
+				sb.push('function reformat' + col.name + '(){\n');
+				// sb.push('alert("do")');
+				sb.push('CodeMirror.commands["selectAll"](cm' + col.name  + ');');
+				sb.push('var r={ from: cm' +col.name + '.getCursor(true), to: cm' + col.name + '.getCursor(false) };\n');
+				sb.push('cm' + col.name + '.autoFormatRange(r.from, r.to);\n');
+				sb.push('}\n');
+				sb.push('var foldFunc = CodeMirror.newFoldFunction(CodeMirror.braceRangeFinder);');
+				sb.push('var cm' + col.name  + ' = CodeMirror.fromTextArea(document.getElementById("ID' + col.name  + '"), { styleActiveLine: true,lineNumbers: true,lineWrapping: true,mode: "application/json",gutters: ["CodeMirror-lint-markers"],lintWith: CodeMirror.jsonValidator,indentUnit:2, tabSize:2, smartIndent:true, dragDrop:false,autoCloseBrackets:true,indentWithTabs: false, extraKeys: {"Ctrl-I": reformat' + col.name  + '}});');	
+				sb.push('submitCMS.push(cm'+col.name+');');
+				sb.push('cm' + col.name + '.on("gutterClick", foldFunc);');
+				sb.push('</script>');
 			}
 			sb.push('</td></tr>');
 		}

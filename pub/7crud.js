@@ -175,6 +175,11 @@ function crudDefSave(e) {
 
 //save the form with ajax please call it from a button inside the form tag
 function crudSave(e) {
+	if (typeof(submitCMS)!='undefined') {
+		for (var i in submitCMS) {
+			submitCMS[i].save();
+		}
+	}
 	var f = $(e.target).closest('form');
 	if (!f.valid()) {
 		return;
