@@ -322,7 +322,7 @@ function Lister(tb) {
 			}
 		});
         var currentPage = _tb.attr("tt.current") || 0;
-        var u = _url + "/" + currentPage + "/o-" + orders.join("|") + "&f-";
+        var u = _url + "/" + currentPage + "&o-" + orders.join("|") + "&f-";
         $.ajax({
             type: "get",
             url: u,

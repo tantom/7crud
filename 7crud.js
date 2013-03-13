@@ -325,7 +325,7 @@ function list(req, res) {
 	var et = _tables[en];
 	var sb = [];
 	var pageNav ='<span style="font-weight:bold">[' + en + ']</span> <a href="/crud/' + en + '/add">add new record</a><a href="/crud/' + en + '/def" style="float:right">def</a>';
-	sb.push('<table width=100%  tt.impl=Lister tt.url="/crud/' + en  + '/list/json" id=Lister>');
+	sb.push('<table width=100%  tt.impl=Lister tt.url="/json/list/' + en  + '" id=Lister>');
 	sb.push('<thead><tr>');
 	// loop the define to list the columns
 	et.listCols.forEach(function(col) {
@@ -350,77 +350,105 @@ function list(req, res) {
 
 function getJson(req, res) {
 	var et = _tables[req.params.name];
-	var id = req.params.id;
 	et.seqObj.find(req.params.id).success(function(data) {
 		res.send(data);
 		res.end();
+	}).error(function(error) {
+		console.log("error:" + error);
+		res.end();	
 	});
+}
+function isNumber (o) {
+  return ! isNaN (o-0) && o !== null && o !== "" && o !== false;
+}
+//parse the query params params has join with & ex: 0&o-@aaa|@bbb&f-
+function parseQueryPs(ps, et) {
+	if (ps==null) {
+		ps = "";
+	}
+	var tmp = ps.split('&');
+	var query = {};
+	tmp.forEach(function(p) {
+		if (p.indexOf('o-')==0) { //order params
+			p = p.substring(2);
+			var tmp = [];
+			if (p.length>0) {
+				var orderCols = p.split("|");
+				orderCols.forEach(function(o) {
+					if (o.indexOf('@')==0) {
+						tmp.push('`' + o.substring(1) + "` ");
+					}else {
+						tmp.push('`' + o + '` desc');
+					}
+				});
+				query.orders = tmp.join(",");
+			}
+		}else if (p.indexOf('f-')==0) { //filter params
+			p = p.substring(2);
+			var filterArys = p.split("|");
+			if (p.length>0) {
+				var wherePs = [];
+				filterArys.forEach(function(o) {
+					var n = o.split("=");
+					var c = n[0];
+					var col = et._cols[c];
+					if (col!=null && n.length>1) {
+						if (col.type=='i' || col.type=='f') {
+							wherePs.push("`" + c + "`=" + n[1]);
+						}else {
+							wherePs.push("`" + c + "`='" + n[1] + "'");
+						}
+					}
+				});
+				query.where = wherePs.join(" and ");
+			}
+		}else { //page params
+			if (isNumber(p)) {
+			   query.page = p*1;
+			}else {
+			   query.page = 0;
+			}
+		}
+	});
+	return query;
 }
 
 function listJson(req, res) {
 	var et = _tables[req.params.name];
-	var reqPage = req.params.page;
-	var ps = req.params.params;
-	if (reqPage==null) 
-		reqPage = 0;
-	var queryPs = {};
-	if (ps!=null) {
-		var pss = ps.split('&');
-		pss.forEach(function(p) {
-			if (p.indexOf('o-')==0) {
-				p = p.substring(2);
-				var tmp = [];
-				if (p.length>0) {
-					var orderCols = p.split("|");
-					orderCols.forEach(function(o) {
-						if (o.indexOf('@')==0) {
-							tmp.push('`' + o.substring(1) + "` ");
-						}else {
-							tmp.push('`' + o + '` desc');
-						}
-					});
-				}
-				queryPs.orders = tmp.join(",");
-
-				if (et.sort!=null) {
-					if (tmp.length>0) {
-						queryPs.orders = queryPs.orders + "," + et.sort;
-					}else {
-						queryPs.orders = et.sort;
-					}
-				}
-			}else if (p.indexOf('f-')==0) {
-				p = p.substring(2);
-				queryPs.filter = p;
-			};
-		});
-	}else {
-		if (et.sort!=null) {
-			queryPs.orders = et.sort;
+	var ps = req.params.ps;
+	var query = parseQueryPs(ps, et);
+	if (et.sort!=null) {
+		if (query.orders!=null) {
+			query.orders = query.orders + "," + et.sort;
+		}else {
+			query.orders = et.sort;
 		}
 	}
-	console.log('et' + sys.inspect(et));
-	console.log('order:' + queryPs.orders);
-	
-	if (!reqPage) {
-		reqPage = 0;
+	if (et.wherePs!=null) {
+		if (query.where!=null) {
+			query.where = query.where + " and " + et.wherePs;
+		}else {
+			query.where = et.wherePs;
+		}
 	}
 	
-	console.log('perPage:' + req.params.perPage);
 	var perPage = req.params.perPage;
 	if (perPage==null) {
-		perPage = 10;
+		perPage = 5;
 	}
 	
 	var condi = {};
+	if (query.where!=null) {
+		condi.where = query.where;
+	}
 	var data = {};
 	et.seqObj.count(condi).success(function(c) {
 		data.totalrows = c;
 		data.totalpages = Math.ceil(c/perPage);
-		data.currentpage = reqPage;
+		data.currentpage = query.page;
 		data.perpage = perPage;
 		condi.limit = perPage;
-		condi.offset = reqPage*perPage;
+		condi.offset = query.page*perPage;
 		//only list the need columns to the view
 		condi.attributes = et.listCols.slice();
 		//if not include the pk in the list then auto add it
@@ -428,7 +456,13 @@ function listJson(req, res) {
 		if (!_.contains(condi.attributes, et.pk)) {
 			condi.attributes.push(et.pk);
 		}
-		condi.order = queryPs.orders;
+		condi.order = query.orders;
+		if (query.where!=null) {
+			condi.where = query.where;
+			// condi.where = {key:'qqnews'};
+		}
+		console.log('query:' + sys.inspect(query));
+		console.log('condi:' + sys.inspect(condi));
 		et.seqObj.findAll(condi).success(function(mds) { 
 			data.rows = mds;
 			//format rows date to viewable format, @todo support show time
@@ -484,7 +518,7 @@ function doLogin(req, res) {
 	}else {
 	    //set the admin login check token
 		res.cookie("admin", crud.config.pass, { expires: 0, httpOnly: true });
-		res.end("1");
+		res.end('1');
 	}
 }
 
@@ -494,12 +528,20 @@ function command(req, res) {
 		if (!tb) {
 			res.end("{}");
 		}else {
-			res.end('{"columns":"' + tb.columns + '"}');
+			res.end('{"columns":"' + tb._columns + '"}');
 		}
 
 		return;
 	}
 	res.end("");
+}
+
+crud.tables = function() {
+	return _tables;
+}
+
+crud.table = function(tbName) {
+	return _tables[tbName];
 }
 
 crud.conf = function(db, user, pass) {	
@@ -535,6 +577,9 @@ crud.init = function(app, tables) {
 	    //tag for check is it has the maintain table crud7
 		var bHasMTTable = false; //if not auto create it
 		conn.connect(function(err) {
+			if (err) {
+				console.log(err);
+			}
 			conn.query('show tables', function(err, rows, fields) {
 				var colName = fields[0].name;
 				//get all tables
@@ -592,8 +637,8 @@ crud.init = function(app, tables) {
 							sb.push(s);
 							colsMap[row.Field] = s; 
 						}
-
 						tbs[tableName].columns = cols.join(",");
+						tbs[tableName]._columns = cols.join(",");
 						tbs[tableName].table = tableName;
 						tbs[tableName].key = tableName;
 						tbs[tableName]._def = sb.join(",");
@@ -632,6 +677,7 @@ crud.init = function(app, tables) {
 						"`def` VARCHAR(2000) NOT NULL ," + 
 						"`list` VARCHAR(2000) NULL ," + 
 						"`sort` VARCHAR(2000) NULL ," +
+						"`wherePs` VARCHAR(2000) NULL ," + 
 						"PRIMARY KEY (`name`) )", function(err, rows, fields){
 							console.log('auto create maintain table [' + maintainTbName  + ']');
 							var tbMT = {};
@@ -642,11 +688,12 @@ crud.init = function(app, tables) {
 							colsMap.def = "def/bs/n";
 							colsMap.list = "list/bs";
 							colsMap.sort = "sort/bs";
+                            colsMap.wherePs = "wherePs/bs";
 							tbMT._cols = colsMap;
-							tbMT._def =  "name,table,desc,def,list,sort";
+							tbMT._def =  "name,table,desc,def,list,sort,wherePs";
 							tbMT.key = maintainTbName;
 							tbMT.table = maintainTbName;
-							tbMT.columns = "name,table,desc,def,list,sort";
+							tbMT.columns = "name,table,desc,def,list,sort,wherePs";
 							tbMT._scan = true;
 							tables[maintainTbName] = tbMT;
 							conn.end();
@@ -661,19 +708,21 @@ crud.init = function(app, tables) {
 									reDef.columns = row.def;
 									reDef.list = row.list;
 									reDef.sort = row.sort;
+									reDef.wherePs = row.wherePs;
 								}else {
-									//not exist table remap the table
+									//not exist table remap the table, it's a mask
 									var newDef = {};
 									newDef.columns = row.def;
 									newDef.list = row.list;
 									newDef.table = row.table;
 									newDef.key = row.name;
 									newDef.sort = row.sort;
-
+                                    newDef.wherePs = row.wherePs; 
 									var srcTable = tables[newDef.table]; 
 									if (srcTable) {
 										newDef._def = srcTable._def;
 										newDef._cols = srcTable._cols;
+										newDef._columns = srcTable._columns;
 										tables[row.name] = newDef;
 									}
 									//@todo table droped delete def config
@@ -691,11 +740,12 @@ crud.init = function(app, tables) {
 	}
 
 	function buildTables(callback) {
-		console.log('tbs:\n' + sys.inspect(tables));
 		for (var i in tables) {
 			var et = tables[i];
 			buildTableObj(et);
 		}
+
+		console.log('tbs:\n' + sys.inspect(tables));
 		callback();
 	}
 
@@ -705,14 +755,14 @@ crud.init = function(app, tables) {
 		app.post('/crud/:name/save', save);
 		app.get('/crud', index);
 		app.get('/crud/:name/add', add);
-		app.get('/crud/:name/list/json/:page/:params', listJson);
+		// app.get('/crud/:name/list/json/:page/:params', listJson);
 		app.get('/crud/:name/list', list);
 		app.get('/crud/:name/edit/:id', edit);
 		app.get('/crud/login', login);
 		app.post('/crud/login', doLogin);
 		app.get('/crud-pub/:file', pubFile);
 		app.get('/crud-command/:cmd/:p', command);
-		app.get('/json/list:perPage?/:name/:page?/:params?', listJson);
+		app.get('/json/list:perPage?/:name/:ps?', listJson);
 		app.get('/json/get/:name/:id', getJson);
 		callback();
 	}
@@ -723,9 +773,9 @@ crud.init = function(app, tables) {
 function buildTableObj(et) {
 	et.cols = [];
 	et.listCols = [];
+	et.colsMap = {};
 	et.dateCols = [];
 	et.timeCols = [];
-	console.log('etCols' + sys.inspect(et));
 	var seq = {}, cl, df;
 	var cls = et.columns.split(",");
 	var insM = {};
@@ -751,7 +801,7 @@ function buildTableObj(et) {
 			et.pkColumn = column;
 			et.pk = column.name;
 		}
-
+		et.colsMap[column.name] = column;
 		et.cols.push(column);
 		et.listCols.push(column.name);
 		seq[column.name] = getSeqColumnType(column);
@@ -815,11 +865,13 @@ function defSave(req, res) {
 		 data.def = req.body.def;
 		 data.list = req.body.list;
 		 data.sort = req.body.sort;
+		 data.wherePs = req.body.wherePs;
 		 mt.seqObj.build(data).save().success(function(obj) {
 			//update memory db obj
 			et.columns = data.def;
 			et.list = data.list;
 			et.sort = data.sort;
+			et.wherePs = data.wherePs;
 			buildTableObj(et);
 		 	res.end('{}');
 		 }).error(function(error){
@@ -828,10 +880,12 @@ function defSave(req, res) {
 	  }else { //update
 		 data.list = req.body.list;
 		 data.sort = req.body.sort;
+		 data.wherePs = req.body.wherePs;
 		 data.def = req.body.def;
 		 data.updateAttributes(data).success(function(data) {
 			//update memory db obj
 			et.columns = data.def;
+			et.wherePs = data.wherePs;
 			et.list = data.list;
 			et.sort = data.sort;
 			buildTableObj(et);
@@ -853,6 +907,7 @@ function def(req, res) {
 			data.def = et.columns;
 			data.list = _.values(et.listCols);
 			data.sort = "";
+			data.wherePs = "";
 		}else {
 			if (!data.def)
 				data.def = "";
@@ -860,6 +915,8 @@ function def(req, res) {
 				data.list = "";
 			if (!data.sort)
 				data.sort = "";
+			if (!data.wherePs)
+				data.wherePs = "";
 		}
 
 		var sb = [];
@@ -870,6 +927,7 @@ function def(req, res) {
 		sb.push('<tr><td>def</td><td><textarea name=def>' + data.def  +'</textarea></td></tr>');
 		sb.push('<tr><td>list</td><td><textarea name=list>' + data.list  + '</textarea></td></tr>');
 		sb.push('<tr><td>sort</td><td><textarea name=sort>' + data.sort + '</textarea></td></tr>');
+		sb.push('<tr><td>wherePs</td><td><textarea name=wherePs>' + data.wherePs + '</textarea></td></tr>');
 		sb.push("<tr><td colspan=2 align=center><input type=button onclick=crudDefSave(event) value='save def'></td></tr>");
 		sb.push('</table>');
 		sb.push('</form>');
@@ -901,5 +959,7 @@ function renderViewHtml(str, pageNav) {
 	});
 }
 
-module.exports = crud; 
+module.exports = crud;
+
+
 
