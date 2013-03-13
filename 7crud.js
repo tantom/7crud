@@ -434,7 +434,7 @@ function listJson(req, res) {
 	
 	var perPage = req.params.perPage;
 	if (perPage==null) {
-		perPage = 5;
+		perPage = 10;
 	}
 	
 	var condi = {};
