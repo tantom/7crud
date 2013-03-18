@@ -312,7 +312,7 @@ function edit(req, res) {
 };
 
 function index(req, res) {
-    if (req.cookies.admin!=crud.config.pass) {
+    if (req.cookies.admin!=crud.config.passMD5) {
 		res.redirect('/crud/login');
 		return;
 	}
@@ -519,10 +519,26 @@ function listJson(req, res) {
 	});
 };
 
+function logout(req, res) {
+	res.clearCookie("admin");
+	var sb = [];
+	sb.push("<script>");
+	sb.push('document.location="/crud"');
+	sb.push("</script>");
+	res.send(renderViewHtml(sb.join("")));
+	res.end();
+}
+
+function md5(str){
+	var hash = require('crypto').createHash('md5');
+	return hash.update(str).digest('hex');
+}
+
 function login(req, res) {
     var sb = [];
-	sb.push('<form action=/crud/login redirect=/crud method=post>');
-	sb.push('<input type=text name=adminPass value="">');
+	sb.push('<form onsubmit="crudLogin(event);return false;"  action=/crud/login redirect=/crud method=post>');
+	sb.push('<input type=password name=adminPass value="">');
+	sb.push('<input type=hidden name=adminPassTrue value="">');
 	sb.push('<input type=button value=login onclick="crudLogin(event)">');
 	sb.push('</form>');
 	res.send(renderViewHtml(sb.join("")));
@@ -530,18 +546,19 @@ function login(req, res) {
 }
 
 function doLogin(req, res) {
-    console.log('cookies' + JSON.stringify(req.cookies));
-	if (req.body['adminPass']==null) {
+    // console.log('cookies' + JSON.stringify(req.cookies));
+	if (req.body['adminPass']==null || req.body['adminPassTrue']==null) {
 		res.end();
 		return;
 	}
 		
-	
-	if (req.body['adminPass']!=crud.config.pass) {
+	var userInput = req.body['adminPassTrue'];
+	var wantedPs = md5(md5(crud.config.pass));
+	if (wantedPs!=userInput) {
 		res.end();
 	}else {
 	    //set the admin login check token
-		res.cookie("admin", crud.config.pass, { expires: 0, httpOnly: true });
+		res.cookie("admin", wantedPs, { expires: 0, httpOnly: true });
 		res.end('1');
 	}
 }
@@ -572,8 +589,10 @@ crud.conf = function(db, user, pass) {
 	crud.config = {
 		db:db,
 		user:user,
-		pass:pass
+		pass:pass,
+		passMD5:md5(md5(pass))
 	}
+
     sequelize = new Sequelize(db, user, pass);
 }
 
@@ -784,6 +803,7 @@ crud.init = function(app, tables) {
 		app.get('/crud/:name/edit/:id', edit);
 		app.get('/crud/login', login);
 		app.post('/crud/login', doLogin);
+		app.get('/crud/logout', logout);
 		app.get('/crud-pub/:file', pubFile);
 		app.get('/crud-command/:cmd/:p', command);
 		app.get('/json/list:perPage?/:name/:ps?', listJson);

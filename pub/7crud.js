@@ -207,10 +207,13 @@ function crudDel(e) {
 }
 
 function crudLogin(e) {
+
 	var f = $(e.target).closest('form');
 	if (!f)
 		return;
-	
+	var p = f.find("[name='adminPass']");
+	var ps = $.md5($.md5(p.attr("value")));
+    f.find('[name="adminPassTrue"]').attr("value", ps); 
 	$.post(f.attr('action'), f.toJSON(), function(res) {
 		if (res==1) {
 			document.location = f.attr('redirect');
