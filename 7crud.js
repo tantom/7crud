@@ -40,6 +40,11 @@ function getSeqColumnType(c) {
 }
 
 function save(req, res, next) {		
+    if (req.cookies.admin!=crud.config.passMD5) {
+		res.redirect('/crud/login');
+		return;
+	}
+
 	var et = _tables[req.params.name];
     for (var i in req.body) {
 		if (req.body[i]=="") {
@@ -196,7 +201,11 @@ function add(req, res) {
 };
 
 function edit(req, res) {
-	var etName = req.params.name;
+    if (req.cookies.admin!=crud.config.passMD5) {
+		res.redirect('/crud/login');
+		return;
+	}
+    var etName = req.params.name;
 	var et = _tables[etName];
     et.seqObj.find(req.params.id).success(function(data) {
 		res.send(renderViewHtml(render(data),"<a href='javascript:history.go(-1)'>back</a>"));
@@ -282,6 +291,7 @@ function edit(req, res) {
 			sb.push('</td></tr>');
 		}
 		sb.push("<tr><td colspan=2 align=center>");
+		sb.push("<input type=button onclick=\"crudSave(event, true)\" value='update and stay'>");
 		sb.push("<input type=button onclick=crudSave(event) value=update>");
 		sb.push("<input type=button onclick=crudDel(event) value=delete>");
 		sb.push("</td></tr>");
@@ -345,7 +355,11 @@ function index(req, res) {
 }
 
 function list(req, res) {
-    var en = req.params.name;
+    if (req.cookies.admin!=crud.config.passMD5) {
+		res.redirect('/crud/login');
+		return;
+	}
+	var en = req.params.name;
 	var et = _tables[en];
 	var sb = [];
 	var pageNav ='<span style="font-weight:bold">[' + en + ']</span> <a href="/crud/' + en + '/add">add new record</a><a href="/crud/' + en + '/def" style="float:right">def</a>';
@@ -458,7 +472,7 @@ function listJson(req, res) {
 	
 	var perPage = req.params.perPage;
 	if (perPage==null) {
-		perPage = 10;
+		perPage = 100;
 	}
 	
 	var condi = {};
@@ -575,6 +589,10 @@ function command(req, res) {
 		return;
 	}
 	res.end("");
+}
+
+crud.query = function(sql) {
+	sequelize.query(sql);
 }
 
 crud.tables = function() {
@@ -893,6 +911,11 @@ function buildTableObj(et) {
 }
 
 function defSave(req, res) {
+    if (req.cookies.admin!=crud.config.passMD5) {
+		res.redirect('/crud/login');
+		return;
+	}
+
 	var et = _tables[req.params.name];
     for (var i in req.body) {
 		if (req.body[i]=="") {

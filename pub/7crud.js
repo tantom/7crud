@@ -174,7 +174,7 @@ function crudDefSave(e) {
 }
 
 //save the form with ajax please call it from a button inside the form tag
-function crudSave(e) {
+function crudSave(e, ops) {
 	if (typeof(submitCMS)!='undefined') {
 		for (var i in submitCMS) {
 			submitCMS[i].save();
@@ -187,7 +187,11 @@ function crudSave(e) {
 	if (!f) 
 		return;
 	$.post(f.attr('action'), f.toJSON(), function(res) {
-		document.location = f.attr('redirect');	
+		if (ops!=null && ops==true) {
+			alert('save ok');
+		}else {
+			document.location = f.attr('redirect');	
+		}
 	}).error(function(err) {
 		alert(err.responseText);
 	});
