@@ -30,8 +30,11 @@ function getSeqColumnType(c) {
 
 	if (c.hasExtra("p")) {
 		t.primaryKey = true;
+        if (c.hasExtra("a")) {
+            t.autoIncrement = true;
+        }
 	}
-	if (c.hasExtra("n")) {
+	if (c.hasExtra("n") && !c.hasExtra("a")) {
 		t.validate = {};
 		t.validate.notNull = true;
 	}
@@ -52,7 +55,7 @@ function save(req, res, next) {
 		}
 	}
 	
-	// console.log('bodys:' + JSON.stringify(req.body));
+	console.log('bodys:' + JSON.stringify(req.body));
 	if (req.body._id) {
 		if (req.body._id.indexOf("@")==0) {
 			var etId = req.body._id.substring(1);
@@ -153,8 +156,12 @@ function add(req, res) {
 			cls = 'class="required"';
 		}
 		if (col.type=="s" || col.type=="i" || col.type=="f") {
-		    var disableStr = col.hasExtra('a')?"disabled":"";
-			sb.push("<input type=text name=" + col.name + " value=\"" + val  + "\" " + disableStr  + " " + cls  + " >");
+		    if (col.hasExtra('a')) {
+		    	sb.push("<input type=text name=" + col.name + " value=\"" + val  + "\" readonly >");
+		    }else {
+		    	sb.push("<input type=text name=" + col.name + " value=\"" + val  + "\" "  + cls  + " >");
+		    }
+			
 		}else if (col.type=="t" || col.type=="bs") {
 			var plusStyle = "";
 			if (col.type=="t") {
@@ -189,7 +196,7 @@ function add(req, res) {
 				tmp.push("{id:'" + tb.table + "',name:'" + tb.table + "'}");
 			}
 		}
-		sb.push(tmp.join(","));
+		sb.push(tmp.joiin(","));
 
 		sb.push("];");
 		sb.push("</script>");
